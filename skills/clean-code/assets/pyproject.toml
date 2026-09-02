@@ -1,0 +1,68 @@
+# Clean-code baseline for Python projects.
+# If you already have a pyproject.toml, merge the [tool.*] sections below.
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+extend-exclude = ["build", "dist", ".venv", "migrations"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",      # pycodestyle
+    "F",           # pyflakes
+    "I",           # isort — import ordering
+    "N",           # pep8-naming
+    "UP",          # pyupgrade — modern syntax
+    "B",           # flake8-bugbear — mutable defaults, loop-variable capture, etc.
+    "A",           # builtin shadowing
+    "C4",          # comprehension quality
+    "SIM",         # simplifiable code
+    "RET",         # return-statement smells (guard clauses)
+    "ARG",         # unused arguments
+    "PTH",         # prefer pathlib over os.path
+    "ERA",         # commented-out code  (C5 in the smells catalog)
+    "PL",          # pylint subset: too many args/branches/statements
+    "RUF",
+]
+ignore = [
+    "E501",        # line length is handled by the formatter
+    "PLR0913",     # arg count — clean_code_lint.py reports this with better context
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ARG", "PLR2004"]   # fixtures and literal expectations are fine in tests
+
+[tool.ruff.lint.pylint]
+max-args = 4
+max-branches = 10
+max-statements = 30
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+warn_return_any = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+no_implicit_optional = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers --strict-config"
+markers = ["slow: excluded from the fast suite"]
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = ["pragma: no cover", "raise NotImplementedError", "if TYPE_CHECKING:"]

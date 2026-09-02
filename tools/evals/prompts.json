@@ -1,0 +1,47 @@
+{
+  "description": "Fixed eval cases for the clean-code skill. Each asks for code substantial enough that the skill should visibly change the output, and concrete enough that clean_code_lint.py can score the result. Prompts deliberately do NOT say 'write clean code' — if the skill only works when asked, it is not working.",
+  "cases": [
+    {
+      "id": "py_csv_report",
+      "language": "Python",
+      "ext": "py",
+      "prompt": "Write a Python module that reads a CSV of order line items (quantity, unit price, status flag), filters to billable rows, applies an 8% tax, and renders a text report with a total line. Include a way to apply a 20% premium multiplier for premium customers.",
+      "targets": ["G25 magic numbers", "F3 flag argument", "G30 function length", "G34 nesting"]
+    },
+    {
+      "id": "py_retry",
+      "language": "Python",
+      "ext": "py",
+      "prompt": "Write a Python retry helper that retries a callable with exponential backoff, a maximum attempt count, and a delay cap. It should be usable with or without jitter.",
+      "targets": ["F3 flag argument", "G25 magic numbers", "C1 docstrings"]
+    },
+    {
+      "id": "java_order_service",
+      "language": "Java",
+      "ext": "java",
+      "prompt": "Write a Java class that looks up an order by ID from a repository, prices it including tax and an express shipping surcharge, notifies the customer, and returns the total. Handle the case where the order does not exist.",
+      "targets": ["G26 return null", "F1 param count", "G25 magic numbers", "G4 swallowed exceptions"]
+    },
+    {
+      "id": "cpp_order_filter",
+      "language": "C++",
+      "ext": "cpp",
+      "prompt": "Write a C++ function that takes a collection of order records, keeps the confirmed ones, applies a pricing multiplier that differs for premium and discount tiers, and returns the result. Report an error if nothing matched.",
+      "targets": ["CPP-RAII raw new/delete", "F3 flag argument", "F1 param count", "G25 magic numbers"]
+    },
+    {
+      "id": "c_text_stats",
+      "language": "C",
+      "ext": "c",
+      "prompt": "Write a C function that opens a file, reads it into a buffer, counts the lines, and returns the count. It should handle failures at each step.",
+      "targets": ["G26 unbounded string functions", "G4 unchecked allocation", "N1 naming", "G25 magic numbers"]
+    },
+    {
+      "id": "py_config_parser",
+      "language": "Python",
+      "ext": "py",
+      "prompt": "Write a Python config parser that reads key=value lines from a file, validates that a retry budget key is an integer between 1 and 10, and returns a config object. Report parse errors with enough detail to debug them.",
+      "targets": ["PY-MUT mutable defaults", "G4 bare except", "C1 docstrings", "G26 precision"]
+    }
+  ]
+}

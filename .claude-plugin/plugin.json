@@ -1,0 +1,16 @@
+{
+  "name": "clean-code",
+  "version": "1.1.0",
+  "description": "Clean code standards for C, C++, Java, and Python — naming, functions, comments, formatting, error handling, TDD, and refactoring — with a linter, a TDD scaffolder, a toolchain installer, and tooling to audit and evaluate the skill itself.",
+  "author": {
+    "name": "johnatorres226",
+    "url": "https://github.com/johnatorres226"
+  },
+  "homepage": "https://github.com/johnatorres226/clean-code-skill",
+  "repository": "https://github.com/johnatorres226/clean-code-skill",
+  "license": "MIT",
+  "keywords": [
+    "clean-code", "code-review", "refactoring", "tdd", "naming",
+    "c", "cpp", "java", "python", "static-analysis", "code-quality"
+  ]
+}
