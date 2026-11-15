@@ -10,8 +10,8 @@ A wrong name costs every future reader a wrong mental model, silently, forever.
 - [Scope determines length](#scope-determines-length)
 - [Grammar by kind](#grammar-by-kind)
 - [Anti-patterns](#anti-patterns)
-- [Casing conventions by language](#casing-conventions-by-language)
-- [Naming worked examples](#naming-worked-examples)
+- [Casing](#casing)
+- [Worked example](#worked-example)
 - [Vocabulary: pick one word per concept](#vocabulary-pick-one-word-per-concept)
 
 ## The test
@@ -28,12 +28,9 @@ If you need a comment to answer any of those, rename instead of commenting.
 
 **1. Reveal intent, not mechanics.**
 
-```python
-# bad — mechanics, requires a comment
-d = 0          # elapsed time in days
-
-# good — the name is the comment
-elapsed_days = 0
+```
+d = 0              # bad — mechanics, requires a comment: elapsed time in days
+elapsed_days = 0   # good — the name is the comment
 ```
 
 **2. Avoid disinformation.** Do not call something a `List` unless it is one. `accountList` for a
@@ -54,16 +51,9 @@ one grep away. Single letters are acceptable only as short-scope loop indices.
 
 **6. Avoid encodings.** No Hungarian notation (`strName`, `iCount`, `pNode`), no `m_` member
 prefixes, no `I` prefix on interfaces. These date from weakly-typed languages and dumb editors;
-today they are noise that goes stale when the type changes.
-
-```java
-// bad
-public interface IShapeFactory { Shape m_createShape(String strKind); }
-
-// good — if you must distinguish, encode the *implementation*, not the interface
-public interface ShapeFactory { Shape createShape(String kind); }
-final class ShapeFactoryImpl implements ShapeFactory { ... }
-```
+today they are noise that goes stale when the type changes. If you must distinguish an interface
+from its implementation, encode the *implementation*: `ShapeFactory` and `ShapeFactoryImpl`, not
+`IShapeFactory`.
 
 **7. Avoid mental mapping.** The reader should not have to hold a translation table. `r` meaning
 "the lowercased URL with the host stripped" is a mapping; `stripped_url` is a name.
@@ -86,7 +76,7 @@ The longer a name lives and the further it travels, the more it must carry.
 
 | Scope | Guidance | Example |
 |---|---|---|
-| 1–5 line loop / lambda | 1 char fine | `for (int i = 0; i < n; ++i)` |
+| 1–5 line loop / lambda | 1 char fine | `for i in range(n)` |
 | Small function local | 1 word | `total`, `row`, `parsed` |
 | Long function local | phrase | `unmatched_invoice_lines` |
 | Member / field | phrase, no prefix | `retry_budget` |
@@ -113,7 +103,7 @@ type it constantly. `File`, `Instant`, `Path`. Long class names often signal a c
 
 **Always append units to numeric quantities.** A staggering share of production incidents are
 seconds-vs-milliseconds. `timeout` is a bug; `timeout_ms` is not. Better still, use a type:
-`Duration`, `std::chrono::milliseconds`, `datetime.timedelta`.
+a `Duration` type.
 
 ## Anti-patterns
 
@@ -128,102 +118,44 @@ seconds-vs-milliseconds. `timeout` is a bug; `timeout_ms` is not. Better still, 
 | Type names in variables (`account_list`) | Rots when the type changes | `accounts` |
 | Numbered series (`a1`, `a2`) | Reader must diff | Name the roles (`source`, `destination`) |
 
-## Casing conventions by language
+## Casing
 
-Follow the ecosystem, not a personal preference. Consistency with the platform is itself clarity.
+Follow the ecosystem's casing, not a personal preference — consistency with the platform is
+itself clarity. The repo's linter config is the authority; don't restate it here. Two rules hold
+everywhere:
 
-**C**
-```c
-typedef struct ring_buffer ring_buffer;      /* snake_case types */
-int  ring_buffer_push(ring_buffer *rb, uint8_t byte);   /* module_noun_verb */
-#define RING_BUFFER_CAPACITY 4096            /* SCREAMING_SNAKE macros */
-static size_t head_index;                    /* snake_case */
+- **Never mix conventions inside one codebase.** Two defensible styles mixed is worse than either.
+- **Where the language has no namespaces, prefix every exported symbol with its module name**
+  (`ring_buffer_push`). That prefix *is* the namespace.
+
+A leading-underscore or `internal` marker means "not public API"; respect it as a contract.
+
+## Worked example
+
 ```
-C has no namespaces, so **prefix every exported symbol with the module name**. That prefix is your
-namespace and it is not optional in a shared codebase.
+# before — every name forces a lookup, and the comment does the names' job
+# returns the list of things that are ok
+function proc(v, t):
+    return [x for x in v if x.f > t and not x.d]
 
-**C++**
-```cpp
-class ConnectionPool {                       // PascalCase types
-public:
-    void acquire_connection();               // snake_case (STL-style) or camelCase — pick one
-private:
-    std::size_t active_count_ = 0;           // trailing underscore for members is acceptable
-};
-constexpr int kMaxRetries = 3;               // or MAX_RETRIES; be consistent
-namespace billing::detail { }                // lowercase namespaces
-```
-Both STL-style `snake_case` and Google/Qt-style `camelCase` members are defensible. What is not
-defensible is mixing them inside one codebase.
+# after — the comment is gone because it is redundant
+function select_active_above_threshold(records, score_threshold):
+    return [r for r in records if r.score > score_threshold and not r.is_deleted]
 
-**Java**
-```java
-public final class RetryPolicy {             // PascalCase
-    private static final int MAX_ATTEMPTS = 3;   // SCREAMING_SNAKE constants
-    private final Duration backoff;          // camelCase fields, no m_ prefix
-    public boolean shouldRetry(int attempt) { ... }   // camelCase methods
-}
-package com.example.billing;                 // lowercase, reverse-domain packages
-```
+# before
+function chk(u, d):
+    if u.t + d < now(): return false
+    return true
 
-**Python**
-```python
-MAX_ATTEMPTS = 3                             # module constant
-class RetryPolicy:                           # PascalCase
-    def should_retry(self, attempt: int) -> bool:   # snake_case
-        ...
-    def _compute_backoff(self) -> float:     # single underscore = internal
-        ...
-```
-A single leading underscore means "not part of the public API"; respect it as a contract. Double
-leading underscore triggers name mangling and is for avoiding subclass collisions only — do not
-use it as "private".
-
-## Naming worked examples
-
-**Before (C++)**
-```cpp
-// returns the list of things that are ok
-std::vector<Rec> proc(const std::vector<Rec>& v, int t) {
-    std::vector<Rec> r;
-    for (const auto& x : v) if (x.f > t && !x.d) r.push_back(x);
-    return r;
-}
-```
-Every name forces a lookup and the comment is doing the work the names should do.
-
-**After**
-```cpp
-std::vector<Record> select_active_above_threshold(
-        const std::vector<Record>& records, int score_threshold) {
-    std::vector<Record> selected;
-    for (const Record& record : records) {
-        if (record.score > score_threshold && !record.is_deleted) {
-            selected.push_back(record);
-        }
-    }
-    return selected;
-}
-```
-The comment is gone because it is redundant. That is the goal.
-
-**Before (Python)**
-```python
-def chk(u, d):
-    if u.t + d < time.time():
-        return False
-    return True
-```
-
-**After**
-```python
-def is_session_still_valid(session: Session, lifetime_seconds: float) -> bool:
+# after
+function is_session_still_valid(session, lifetime_seconds):
     expires_at = session.created_at + lifetime_seconds
-    return time.time() < expires_at
+    return now() < expires_at
 ```
-Note three separate wins: the predicate name reads as the condition at the call site
+
+Three wins in the second pair: the predicate reads as the condition at the call site
 (`if is_session_still_valid(...)`), the unit is in the parameter name, and the extracted
-`expires_at` variable explains the arithmetic without a comment.
+`expires_at` explains the arithmetic without a comment.
 
 ## Vocabulary: pick one word per concept
 
