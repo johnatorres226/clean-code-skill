@@ -47,6 +47,8 @@ class CaseScore:
     findings: int
     weighted: int
     by_code: dict[str, int]
+    tokens: int = 0        # all input (incl. cache) + output; 0 when no usage recorded
+    cost_usd: float = 0.0
 
     @property
     def missing(self) -> bool:
@@ -116,19 +118,31 @@ def run_cases(prompts: list[dict], out_dir: Path, skill_dir: Path | None,
             + f"\n\nWrite the complete file. Output ONLY {case['language']} source code, "
               f"with no markdown fences and no commentary."
         )
-        command = [cli, "-p", prompt]
+        # Isolate both arms from the operator's own setup (hooks, plugins, skills, MCP,
+        # project CLAUDE.md) so the only difference between runs is the skill itself.
+        command = [cli, "-p", prompt, "--output-format", "json",
+                   "--setting-sources", "", "--strict-mcp-config",
+                   "--disable-slash-commands", "--allowedTools", "Read,Grep,Glob"]
+        if skill_dir:
+            command += ["--add-dir", str(skill_dir)]
         if model:
             command += ["--model", model]
         print(f"running {case['id']} ...", flush=True)
         try:
-            done = subprocess.run(command, capture_output=True, text=True, timeout=timeout_s)
+            done = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
+                                  timeout=timeout_s, cwd=out_dir)
         except subprocess.TimeoutExpired:
             print(f"  timed out after {timeout_s}s", file=sys.stderr)
             continue
         if done.returncode != 0:
             print(f"  failed: {done.stderr[:200]}", file=sys.stderr)
             continue
-        body = done.stdout.strip()
+        reply = json.loads(done.stdout)
+        (out_dir / f"{case['id']}.usage.json").write_text(json.dumps({
+            key: reply.get(key) for key in
+            ("usage", "total_cost_usd", "num_turns", "duration_ms")
+        }, indent=2), encoding="utf-8")
+        body = reply["result"].strip()
         if body.startswith("```"):  # strip fences the model may add anyway
             body = "\n".join(body.split("\n")[1:-1])
         target.write_text(body, encoding="utf-8")
@@ -172,6 +186,9 @@ def score_dir(results_dir: Path, prompts: list[dict], linter: Path) -> list[Case
         for finding in findings:
             by_code[finding["code"]] = by_code.get(finding["code"], 0) + 1
             weighted += SEVERITY_WEIGHT.get(finding["severity"], 1)
+        usage_file = results_dir / f"{case['id']}.usage.json"
+        usage = json.loads(usage_file.read_text(encoding="utf-8")) if usage_file.exists() else {}
+        counts = usage.get("usage") or {}
         scores.append(CaseScore(
             case_id=case["id"],
             language=case["language"],
@@ -179,6 +196,9 @@ def score_dir(results_dir: Path, prompts: list[dict], linter: Path) -> list[Case
             findings=len(findings),
             weighted=weighted,
             by_code=by_code,
+            tokens=sum(counts.get(k, 0) for k in ("input_tokens", "output_tokens",
+                       "cache_creation_input_tokens", "cache_read_input_tokens")),
+            cost_usd=usage.get("total_cost_usd") or 0.0,
         ))
     return scores
 
@@ -200,7 +220,7 @@ def write_scorecard(results_dir: Path, scores: list[CaseScore]) -> Path:
 
 def report_scores(scores: list[CaseScore], label: str) -> None:
     print(f"\n{label}")
-    print(f"  {'case':<26} {'files':>5} {'findings':>9} {'weighted':>9}")
+    print(f"  {'case':<26} {'files':>5} {'findings':>9} {'weighted':>9} {'tokens':>8}")
     for s in scores:
         if s.missing:
             marker = "  MISSING"
@@ -208,7 +228,7 @@ def report_scores(scores: list[CaseScore], label: str) -> None:
             marker = ""
         else:
             marker = "  <-"
-        print(f"  {s.case_id:<26} {s.files:>5} {s.findings:>9} {s.weighted:>9}{marker}")
+        print(f"  {s.case_id:<26} {s.files:>5} {s.findings:>9} {s.weighted:>9} {s.tokens:>8}{marker}")
     clean = sum(1 for s in scores if s.clean)
     scored = [s for s in scores if not s.missing]
     missing = [s for s in scores if s.missing]
@@ -260,19 +280,25 @@ def compare(before_dir: Path, after_dir: Path) -> int:
                            sum(after_cases[c]["weighted"] for c in shared)),
         "cases_clean": (sum(1 for c in shared if before_cases[c]["findings"] == 0),
                         sum(1 for c in shared if after_cases[c]["findings"] == 0)),
+        "tokens": (sum(before_cases[c].get("tokens", 0) for c in shared),
+                   sum(after_cases[c].get("tokens", 0) for c in shared)),
     }
+    cost = (sum(before_cases[c].get("cost_usd", 0) for c in shared),
+            sum(after_cases[c].get("cost_usd", 0) for c in shared))
 
     print(f"  {'metric':<34} {'before':>8} {'after':>8} {'delta':>8}")
     for label, key, lower_is_better in [
         ("total findings", "total_findings", True),
         ("weighted severity", "total_weighted", True),
         ("cases producing clean code", "cases_clean", False),
+        ("tokens (in + cache + out)", "tokens", True),
     ]:
         b, a = totals[key]
         delta = a - b
         good = (delta < 0) if lower_is_better else (delta > 0)
         flag = "  better" if delta and good else ("  WORSE" if delta else "")
         print(f"  {label:<34} {b:>8} {a:>8} {delta:>+8}{flag}")
+    print(f"  {'cost (USD)':<34} {cost[0]:>8.2f} {cost[1]:>8.2f} {cost[1] - cost[0]:>+8.2f}")
 
     regressions = [after_cases[c] for c in shared
                    if after_cases[c]["weighted"] > before_cases[c]["weighted"]]
@@ -294,6 +320,7 @@ def compare(before_dir: Path, after_dir: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp1252
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
