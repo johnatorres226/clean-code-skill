@@ -18,9 +18,6 @@ Typical loop:
     python3 skill_eval.py run   --skill skills/clean-code --out results/baseline --no-skill
     python3 skill_eval.py run   --skill skills/clean-code --out results/with-skill
     python3 skill_eval.py compare results/baseline results/with-skill
-
-Without the CLI, `run` writes a runbook of prompts you can paste manually; drop the
-resulting code files into the output directory and `score` still works.
 """
 
 from __future__ import annotations
@@ -91,25 +88,8 @@ def run_cases(prompts: list[dict], out_dir: Path, skill_dir: Path | None,
     cli = shutil.which("claude")
 
     if not cli:
-        runbook = out_dir / "RUNBOOK.md"
-        lines = [
-            "# Manual eval runbook",
-            "",
-            "The `claude` CLI was not found, so prompts were not executed automatically.",
-            "Run each prompt below, save the generated code into this directory as",
-            "`<case_id>.<ext>`, then run:",
-            "",
-            f"    python3 tools/skill_eval.py score {out_dir}",
-            "",
-            f"Skill context: {'loaded from ' + str(skill_dir) if skill_dir else 'NONE (baseline run)'}",
-            "",
-        ]
-        for case in prompts:
-            lines += [f"## {case['id']}  ({case['language']})", "",
-                      "```", build_prompt(case, skill_dir), "```", ""]
-        runbook.write_text("\n".join(lines), encoding="utf-8")
-        print(f"claude CLI not found — wrote manual runbook: {runbook}")
-        return 0
+        print("claude CLI not found on PATH; it is required to run evals.", file=sys.stderr)
+        return 2
 
     for case in prompts:
         target = out_dir / f"{case['id']}.{case['ext']}"
@@ -353,7 +333,7 @@ def main(argv: list[str] | None = None) -> int:
     if cfg.command == "score":
         prompts = load_prompts(Path(cfg.prompts))
         linter = Path(cfg.linter) if cfg.linter else \
-            REPO_ROOT / "skills" / "clean-code" / "scripts" / "clean_code_lint.py"
+            Path(__file__).resolve().parent / "evals" / "lint.py"
         if not linter.exists():
             print(f"Linter not found: {linter}", file=sys.stderr)
             return 2

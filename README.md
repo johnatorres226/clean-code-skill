@@ -23,24 +23,14 @@ packaged `clean-code.skill` file from the releases.
 
 ```
 skills/clean-code/
-├── SKILL.md              always loaded (~3,600 tokens) — triage protocol + core procedures
-├── references/           14 files, ~37,000 tokens, loaded on demand
-├── scripts/              executed, never loaded into context
-│   ├── clean_code_lint.py      smell detection for all four languages
-│   ├── tdd_scaffold.py         red-green-refactor starter
-│   └── setup_toolchain.sh      installs the configs in assets/
-├── assets/               .clang-format, .clang-tidy, checkstyle.xml, pyproject.toml, ...
+├── SKILL.md              always loaded (~3,300 tokens) — triage protocol + core procedures
+├── references/           10 language-agnostic files, ~22,000 tokens, loaded on demand
 └── .skill-audit.json     declared exceptions to the audit defaults, each with a justification
 
 tools/
 ├── skill_audit.py        context-budget and structural audit
 ├── skill_eval.py         does the skill actually change the generated code?
-└── evals/prompts.json    six fixed eval cases
-
-commands/
-├── clean-code-review.md  /clean-code-review <path>
-├── clean-code-audit.md   /clean-code-audit
-└── clean-code-eval.md    /clean-code-eval
+└── evals/                fixed eval cases + lint.py, the heuristic scorer
 ```
 
 ## Design: progressive disclosure, enforced
@@ -82,7 +72,7 @@ Two design decisions worth calling out because they cut against the obvious move
 ## Curating the skill
 
 ```bash
-python3 tools/skill_audit.py skills/clean-code --task "write a python function"
+python3 tools/skill_audit.py skills/clean-code
 ```
 
 Reports the context budget per tier, the largest references, and structural problems: broken
@@ -99,7 +89,7 @@ python3 tools/skill_audit.py skills/clean-code --fail-on-violation   # CI gate
 
 ## Evaluating the skill
 
-Prose quality is not evidence. Because the skill ships a linter, generated code can be scored
+Prose quality is not evidence. Because `tools/evals/lint.py` scores smells by catalog ID, generated code can be scored
 objectively against the skill's own standard:
 
 ```bash
@@ -122,12 +112,9 @@ Three measurement guarantees, because each of these would otherwise produce a fl
 - **Per-case regressions** are reported separately and set exit code 1, since an aggregate
   improvement can hide a case that got worse.
 
-Without the `claude` CLI, `run` writes a manual runbook instead and `score` still works on
-pasted-in output.
-
 ## Honest limitations
 
-- **The linter's C-family parser is regex-and-brace based.** Heavily templated C++ or unusual
+- **The eval linter's C-family parser is regex-and-brace based.** Heavily templated C++ or unusual
   macro layouts can be missed. Python analysis uses the `ast` module and is exact.
 - **Token counts are estimates** (words × 4/3). Directionally reliable, not exact.
 - **The eval measures lint-cleanliness, not correctness or design quality.** Code can lint clean

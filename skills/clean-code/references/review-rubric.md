@@ -6,7 +6,7 @@ is a wall of nitpicks or a vague "looks good".
 
 ## Procedure
 
-1. **Run the linter first.** `python3 scripts/clean_code_lint.py <paths>` catches the mechanical
+1. **Run the linter first.** The repo's lint command (`standards.toml`) catches the mechanical
    findings for free — length, arity, nesting, magic numbers, commented-out code. Never spend
    human review attention on what a tool can find.
 2. **Read for correctness.** Does it do the right thing, including at the boundaries? This

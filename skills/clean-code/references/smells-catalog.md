@@ -12,7 +12,7 @@ written for this skill and stated language-neutrally.
 This is the largest reference in the skill (~4,800 tokens). Read it whole only when you mean to.
 
 **1. Targeted lookup — you already have an ID.** This is the normal path after running
-`scripts/clean_code_lint.py`, which reports findings tagged with these IDs. Do **not** load the
+a linter or review that reports findings tagged with these IDs. Do **not** load the
 file; grep the single entry:
 
 ```bash

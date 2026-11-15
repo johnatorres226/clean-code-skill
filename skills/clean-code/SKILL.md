@@ -32,16 +32,9 @@ also the fast one, because it is the one that is easy to make fast.
 The references total ~22,000 tokens. Loading them naively costs more than it returns. Work in
 this order and stop as soon as you have what you need.
 
-**Step 1 — run a script instead of reading.** Anything mechanical is cheaper to detect than to
-look up. The linter reports findings tagged with catalog IDs, which is also what makes Step 3
-cheap.
-
-```bash
-python3 scripts/clean_code_lint.py <paths...>          # smells (C, C++, Java, Python)
-python3 scripts/clean_code_lint.py <paths> --json      # machine-readable, for CI
-python3 scripts/tdd_scaffold.py --lang python --unit Parser --dir src/
-bash scripts/setup_toolchain.sh <c|cpp|java|python> .  # formatter + linter configs from assets/
-```
+**Step 1 — run the repo's linter instead of reading.** Anything mechanical is cheaper to detect
+than to look up. The lint and format commands are in the repo's `standards.toml` (see the `verify`
+skill); fix what they report before reading anything here.
 
 **Step 2 — load one reference. Two if the task genuinely spans two areas.**
 
@@ -95,16 +88,16 @@ This is the highest-leverage skill in the whole discipline. Follow it literally.
    `is_eligible`, `render_invoice_line`. If the honest name needs "and" or "then", the function
    is doing more than one thing. Split it.
 3. **Reduce it to one level of abstraction.** Every statement in the body should sit at roughly
-   the same conceptual altitude. A function that mixes `for (int i = 0; ...)` byte-shuffling with
-   `submitOrder(order)` is asking the reader to change altitude mid-sentence.
+   the same conceptual altitude. A function that mixes index-by-index byte shuffling with
+   `submit_order(order)` is asking the reader to change altitude mid-sentence.
 4. **Extract until you cannot extract meaningfully.** If a block needs a comment to explain what
    it does, that comment is the name of a function you have not written yet. Extract it, and the
    comment becomes the name.
 5. **Cut the arguments.** Zero is ideal, one is fine, two is acceptable, three needs a reason,
    more than three needs a parameter object. Never pass a boolean flag — it announces the
    function does two things; write the two functions.
-6. **Remove output arguments.** A function should return its result. In C, where an out-pointer
-   is idiomatic, document ownership and nullability precisely.
+6. **Remove output arguments.** A function should return its result. Where out-parameters are
+   idiomatic, document ownership and nullability precisely.
 7. **Flatten the nesting.** Aim for a maximum indent depth of two inside the body. Guard clauses
    and early returns beat pyramids. Extract the inner block into a named helper.
 8. **Make it total or make it explicit.** Either the function handles every input it accepts, or

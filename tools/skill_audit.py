@@ -11,7 +11,6 @@ Usage:
     python3 skill_audit.py skills/clean-code
     python3 skill_audit.py skills/clean-code --json
     python3 skill_audit.py skills/clean-code --budget 3000 --fail-on-violation
-    python3 skill_audit.py skills/clean-code --task "write a python function"
 """
 
 from __future__ import annotations
@@ -248,38 +247,6 @@ def check_duplication(skill_dir: Path, result: AuditResult, config: dict) -> Non
 
 
 # --------------------------------------------------------------------------------------
-# Task simulation
-# --------------------------------------------------------------------------------------
-
-TASK_ROUTES = {
-    "write a function": ["functions.md"],
-    "review a pr": ["review-rubric.md"],
-    "refactor legacy code": ["refactoring.md", "tdd-and-tests.md"],
-    "name a variable": [],
-    "add tests": ["tdd-and-tests.md"],
-}
-
-
-def simulate_task(result: AuditResult, task: str) -> None:
-    key = task.lower().strip()
-    files = TASK_ROUTES.get(key)
-    if files is None:
-        print(f"Unknown task '{task}'. Known: {', '.join(sorted(TASK_ROUTES))}")
-        return
-    base = result.skill_md.tokens if result.skill_md else 0
-    by_name = {Path(r.path).name: r.tokens for r in result.references}
-    loaded = sum(by_name.get(f, 0) for f in files)
-    print(f"\nTask: {task}")
-    print(f"  SKILL.md (always)      {base:>6}")
-    for f in files:
-        print(f"  {f:<22} {by_name.get(f, 0):>6}")
-    if not files:
-        print("  (summary in SKILL.md is sufficient — no reference loaded)")
-    print(f"  {'TOTAL':<22} {base + loaded:>6} tokens")
-    print(f"  vs. loading everything {base + result.reference_total:>6} tokens")
-
-
-# --------------------------------------------------------------------------------------
 # Driver
 # --------------------------------------------------------------------------------------
 
@@ -352,8 +319,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--budget", type=int, default=DEFAULT_SKILL_BUDGET,
                         help="Token budget for the always-loaded SKILL.md body")
     parser.add_argument("--reference-budget", type=int, default=DEFAULT_REFERENCE_BUDGET)
-    parser.add_argument("--task", action="append", default=[],
-                        help="Simulate the load cost of a task (repeatable)")
     parser.add_argument("--fail-on-violation", action="store_true",
                         help="Exit 1 if any high-severity issue is found")
     cfg = parser.parse_args(argv)
@@ -369,8 +334,6 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(asdict(result), indent=2))
     else:
         report(result)
-        for task in cfg.task:
-            simulate_task(result, task)
 
     high = [i for i in result.issues if i.severity == "high"]
     return 1 if (cfg.fail_on_violation and high) else 0
