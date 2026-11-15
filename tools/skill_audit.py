@@ -174,7 +174,7 @@ def check_budget(result: AuditResult, skill_budget: int, ref_budget: int,
             "escalation trigger.",
         ))
     for ref in result.references:
-        name = ref.path.split("/")[-1]
+        name = Path(ref.path).name
         if ref.tokens <= ref_budget:
             continue
         if name in partial_access:
@@ -252,10 +252,9 @@ def check_duplication(skill_dir: Path, result: AuditResult, config: dict) -> Non
 # --------------------------------------------------------------------------------------
 
 TASK_ROUTES = {
-    "write a python function": ["functions.md", "lang-python.md"],
-    "write a c function": ["functions.md", "lang-c.md"],
-    "review a java pr": ["review-rubric.md", "lang-java.md"],
-    "refactor legacy c": ["refactoring.md", "tdd-and-tests.md", "lang-c.md"],
+    "write a function": ["functions.md"],
+    "review a pr": ["review-rubric.md"],
+    "refactor legacy code": ["refactoring.md", "tdd-and-tests.md"],
     "name a variable": [],
     "add tests": ["tdd-and-tests.md"],
 }
@@ -268,7 +267,7 @@ def simulate_task(result: AuditResult, task: str) -> None:
         print(f"Unknown task '{task}'. Known: {', '.join(sorted(TASK_ROUTES))}")
         return
     base = result.skill_md.tokens if result.skill_md else 0
-    by_name = {r.path.split("/")[-1]: r.tokens for r in result.references}
+    by_name = {Path(r.path).name: r.tokens for r in result.references}
     loaded = sum(by_name.get(f, 0) for f in files)
     print(f"\nTask: {task}")
     print(f"  SKILL.md (always)      {base:>6}")
@@ -346,6 +345,7 @@ def report(result: AuditResult) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp1252
     parser = argparse.ArgumentParser(description="Audit a skill's context economy and structure.")
     parser.add_argument("skill_dir")
     parser.add_argument("--json", action="store_true")

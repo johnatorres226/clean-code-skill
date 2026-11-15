@@ -749,6 +749,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp1252
     cfg = build_parser().parse_args(argv)
 
     only = {c.strip().upper() for c in cfg.only.split(",") if c.strip()}
