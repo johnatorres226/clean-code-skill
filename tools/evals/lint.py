@@ -5,10 +5,10 @@ Detects the mechanically-checkable smells from references/smells-catalog.md so t
 human review attention can go to the judgment calls instead.
 
 Usage:
-    python3 clean_code_lint.py <path> [<path> ...]
-    python3 clean_code_lint.py src/ --json
-    python3 clean_code_lint.py src/ --max-function-lines 30 --max-params 4
-    python3 clean_code_lint.py src/ --only F1,G25 --fail-on-findings
+    python3 lint.py <path> [<path> ...]
+    python3 lint.py src/ --json
+    python3 lint.py src/ --max-function-lines 30 --max-params 4
+    python3 lint.py src/ --only F1,G25 --fail-on-findings
 
 This tool is deliberately conservative: it reports things worth a second look, not
 verdicts. Every finding cites a catalog ID you can look up.
