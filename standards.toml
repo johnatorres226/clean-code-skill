@@ -1,0 +1,28 @@
+# This repo's own standards (dogfood). Template: skills/setup-standards/templates/standards.toml
+
+[branches]
+protected   = ["main", "dev"]
+integration = "dev"
+release     = "main"
+prefixes    = ["feat/", "fix/", "refactor/", "perf/", "test/", "docs/", "chore/", "ci/", "build/"]
+merge       = "rebase"
+
+[commits]
+types             = ["feat", "fix", "refactor", "perf", "test", "docs", "chore", "ci", "build", "revert"]
+max_subject       = 72
+max_changed_lines = 300
+max_files         = 10
+
+[pr]
+max_changed_lines = 400
+max_files         = 25
+reviews_required  = 0                  # solo repo; the standards status check is still required
+
+[size]
+exclude = ["*.lock", "*-lock.json", "results/*", "tools/evals/benchmarks/*"]
+
+[gates]
+format    = ""
+lint      = "python tools/skill_audit.py skills/clean-code --fail-on-violation"
+typecheck = "python -m compileall -q skills tools tests"
+test      = "python tests/test_standards.py"
