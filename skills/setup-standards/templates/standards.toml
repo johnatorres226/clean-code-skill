@@ -1,0 +1,29 @@
+# Single source of truth for this repo's standards. Read by .githooks/standards.py (hooks + CI)
+# and by the clean-code-standards skills. Edit values, not the scripts.
+
+[branches]
+protected   = ["main", "dev"]          # never committed or pushed to directly
+integration = "dev"                    # feature branches start here and PR back here
+release     = "main"                   # only `integration` merges here
+prefixes    = ["feat/", "fix/", "refactor/", "perf/", "test/", "docs/", "chore/", "ci/", "build/"]
+merge       = "rebase"                 # feature -> dev keeps atomic commits; dev -> main: "merge"
+
+[commits]                              # Conventional Commits, one concern each
+types             = ["feat", "fix", "refactor", "perf", "test", "docs", "chore", "ci", "build", "revert"]
+max_subject       = 72
+max_changed_lines = 300
+max_files         = 10
+
+[pr]
+max_changed_lines = 400                # review quality drops sharply past ~400 lines
+max_files         = 25
+reviews_required  = 1
+
+[size]
+exclude = ["*.lock", "*-lock.json", "*.min.*", "*.snap", "vendor/*", "dist/*"]
+
+[gates]                                # shell commands, run in this order; "" = not applicable
+format    = ""                         # check-only, never rewrites (e.g. ruff format --check .)
+lint      = ""
+typecheck = ""
+test      = ""

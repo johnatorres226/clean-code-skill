@@ -1,0 +1,4 @@
+#!/bin/sh
+# Installed by clean-code-standards. Activate with: git config core.hooksPath .githooks
+for py in python3 python "py -3"; do $py -c "import tomllib" 2>/dev/null && exec $py "$(dirname "$0")/standards.py" staged; done
+echo "standards: Python 3.11+ not found on PATH" >&2; exit 1
