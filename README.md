@@ -75,10 +75,9 @@ Two design decisions worth calling out because they cut against the obvious move
   reference load or into an answer with no guidance at all. Each summary instead ends with an
   **"Open the reference when:"** line naming exactly what it does not cover. The defect was never
   the duplication — it was the absent handoff signal.
-- **`lang-c.md` and `lang-cpp.md` each duplicate the ~155 words they share.** Two copies will
-  drift; that is a real cost, accepted so that a single-language task never loads both files. The
-  duplication is declared in `.skill-audit.json` so the audit does not flag it and a reader knows
-  it is deliberate.
+- **References are language-agnostic.** Examples are neutral pseudocode, one per rule. Language
+  idioms are enforced by each repo's linter and formatter config rather than described in prose,
+  which removed four per-language references (~10k tokens).
 
 ## Curating the skill
 

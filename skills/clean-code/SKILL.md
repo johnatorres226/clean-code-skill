@@ -1,6 +1,6 @@
 ---
 name: clean-code
-description: Comprehensive clean code standards for C, C++, Java, and Python — naming, function design, comments, formatting, error handling, class design, test-driven development, refactoring, and a full code-smell catalog. Use this skill whenever writing new code, reviewing or critiquing code, refactoring, cleaning up a legacy file, naming things, deciding whether to write a comment, designing a function or class, setting up linters/formatters, writing unit tests or doing TDD, or when the user mentions "clean code", "readable", "maintainable", "code quality", "code review", "refactor", "tech debt", "style guide", or asks how to make code better. Also use it proactively any time you are about to produce more than a trivial amount of C/C++/Java/Python code, so that what you write is code the next programmer will thank you for.
+description: Language-agnostic clean code standards — naming, function design, comments, formatting, error handling, class design, test-driven development, refactoring, and a full code-smell catalog. Use this skill whenever writing new code, reviewing or critiquing code, refactoring, cleaning up a legacy file, naming things, deciding whether to write a comment, designing a function or class, setting up linters/formatters, writing unit tests or doing TDD, or when the user mentions "clean code", "readable", "maintainable", "code quality", "code review", "refactor", "tech debt", "style guide", or asks how to make code better. Also use it proactively any time you are about to produce more than a trivial amount of code in any language, so that what you write is code the next programmer will thank you for.
 ---
 
 # Clean Code
@@ -29,7 +29,7 @@ also the fast one, because it is the one that is easy to make fast.
 
 ## How to use this skill — triage before you load
 
-The references total ~35,000 tokens. Loading them naively costs more than it returns. Work in
+The references total ~22,000 tokens. Loading them naively costs more than it returns. Work in
 this order and stop as soon as you have what you need.
 
 **Step 1 — run a script instead of reading.** Anything mechanical is cheaper to detect than to
@@ -37,7 +37,7 @@ look up. The linter reports findings tagged with catalog IDs, which is also what
 cheap.
 
 ```bash
-python3 scripts/clean_code_lint.py <paths...>          # smells, all four languages
+python3 scripts/clean_code_lint.py <paths...>          # smells (C, C++, Java, Python)
 python3 scripts/clean_code_lint.py <paths> --json      # machine-readable, for CI
 python3 scripts/tdd_scaffold.py --lang python --unit Parser --dir src/
 bash scripts/setup_toolchain.sh <c|cpp|java|python> .  # formatter + linter configs from assets/
@@ -45,33 +45,29 @@ bash scripts/setup_toolchain.sh <c|cpp|java|python> .  # formatter + linter conf
 
 **Step 2 — load one reference. Two if the task genuinely spans two areas.**
 
-This is a default, not a cap. Go to three or four when the task really is that wide — "refactor
-this legacy C module and get it under test" legitimately needs `refactoring.md`,
-`tdd-and-tests.md`, and `lang-c.md`. Skipping the third file to obey a budget produces worse work
-and hides the fact that it did. The rule is: load what the task needs, and know what each file
-costs before you open it.
+This is a default, not a cap. Go to three when the task really is that wide — "refactor this
+legacy module and get it under test" legitimately needs `refactoring.md` and `tdd-and-tests.md`.
+Skipping a needed file to obey a budget produces worse work and hides the fact that it did. Load
+what the task needs, and know what each file costs before you open it.
+
+References are language-agnostic: examples are neutral pseudocode. Language idioms — casing,
+formatter rules, framework syntax — are the job of the repo's linter and formatter config, not of
+this skill. Follow the ecosystem's idioms; let the tools enforce them.
 
 | Task | Read | ~Tokens |
 |---|---|---|
-| Writing or splitting a function | `references/functions.md` | 3,100 |
-| Naming anything | `references/naming.md` | 2,100 |
-| Deciding whether/how to comment | `references/comments.md` | 2,400 |
-| Layout, line length, file organization | `references/formatting.md` | 1,800 |
-| Errors, exceptions, null, resources | `references/error-handling.md` | 2,500 |
-| Classes, modules, cohesion, dependencies | `references/classes-and-design.md` | 3,200 |
-| Writing tests, doing TDD | `references/tdd-and-tests.md` | 3,100 |
-| Cleaning existing code | `references/refactoring.md` | 2,900 |
-| Running a formal review | `references/review-rubric.md` | 1,300 |
-| C idioms | `references/lang-c.md` | 1,900 |
-| C++ idioms | `references/lang-cpp.md` | 1,900 |
-| Java idioms | `references/lang-java.md` | 2,500 |
-| Python idioms | `references/lang-python.md` | 3,000 |
+| Writing or splitting a function | `references/functions.md` | 2,200 |
+| Naming anything | `references/naming.md` | 1,700 |
+| Deciding whether/how to comment | `references/comments.md` | 1,600 |
+| Layout, line length, file organization | `references/formatting.md` | 1,200 |
+| Errors, exceptions, null, resources | `references/error-handling.md` | 1,700 |
+| Classes, modules, cohesion, dependencies | `references/classes-and-design.md` | 2,200 |
+| Writing tests, doing TDD | `references/tdd-and-tests.md` | 2,800 |
+| Cleaning existing code | `references/refactoring.md` | 2,700 |
+| Running a formal review | `references/review-rubric.md` | 1,400 |
 | Looking up a smell | `references/smells-catalog.md` | **grep it — see Step 3** |
 
-`lang-c.md` and `lang-cpp.md` each repeat the rules the two languages share, so a single-language
-task never needs both.
-
-**Step 3 — never read the smells catalog whole.** It is the largest file (~5,100 tokens) and it
+**Step 3 — never read the smells catalog whole.** It is the largest file (~4,800 tokens) and it
 is a lookup table. Grep the entry you want:
 
 ```bash
@@ -118,7 +114,7 @@ This is the highest-leverage skill in the whole discipline. Follow it literally.
 10. **Re-read it as the next programmer.** Would they need to look anywhere else to trust it? If
     yes, keep going.
 
-Full treatment with before/after examples in all three languages: `references/functions.md`.
+Full treatment with before/after examples: `references/functions.md`.
 
 ## Writing a comment — the procedure
 
@@ -240,29 +236,13 @@ Grep `references/smells-catalog.md` by ID for anything the linter flags; read
 `references/review-rubric.md` for the output format and severity levels. Review comments should be specific, kind, and actionable — cite the principle,
 propose the concrete edit, and distinguish blocking issues from suggestions.
 
-## Cross-language stance
+## Language stance
 
-The principles are universal; the idioms are not. Applying a Java idiom in Python produces code
-that is clean by the letter and wrong by the spirit.
-
-- **C** — no exceptions, no destructors, no namespaces. Cleanliness comes from disciplined
-  ownership conventions, consistent error-code returns, single-exit cleanup with `goto cleanup`
-  where it genuinely reduces duplication, `const` correctness, and headers that reveal contracts.
-- **C++** — RAII is the load-bearing idea. Value semantics, smart pointers, `const`, the Rule of
-  Zero, standard algorithms over hand-rolled loops, and exceptions or `std::expected` used
-  consistently rather than mixed.
-- **Java** — small classes with real responsibilities, dependency injection over `new` in
-  business logic, unchecked exceptions with context, `Optional` at API boundaries instead of
-  returning null, immutability by default, and no ceremony that a modern language feature removes.
-- **Python** — readability is a language value, not an add-on. Follow PEP 8 and PEP 20, use
-  type hints on public interfaces, prefer comprehensions and generators over manual accumulation,
-  use context managers for resources, dataclasses over attribute soup, and EAFP over LBYL where
-  it reads better.
-
-**Open the matching `references/lang-*.md` when** you are writing more than a few lines in that
-language — each contains the idioms, traps, and a before/after worked example that the paragraph
-above only gestures at. `lang-c.md` and `lang-cpp.md` are separate files and each repeats the
-rules they share, so load only the one you need.
+The principles are universal; the idioms are not. Write each language the way its ecosystem
+writes it — translating one language's idioms into another is clean by the letter and wrong by the
+spirit. In every language: bind resources to a scope that releases them, use one error convention
+per module, make data immutable by default, make absence explicit in the type, and inject
+collaborators instead of constructing them. The repo's linter and formatter enforce the rest.
 
 ## What to do when the codebase disagrees with this skill
 
