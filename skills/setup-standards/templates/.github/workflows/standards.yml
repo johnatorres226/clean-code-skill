@@ -1,0 +1,21 @@
+name: standards
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+jobs:
+  standards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Install the repo's toolchain here if the gates need it (e.g. pip install -e .[dev]).
+      - name: Commits and PR size
+        if: github.event_name == 'pull_request'
+        run: python3 .githooks/standards.py range origin/${{ github.base_ref }}
+      - name: Gates
+        run: python3 .githooks/standards.py check
