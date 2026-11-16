@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -77,7 +78,9 @@ def sh(cwd: Path, *args: str, env: dict | None = None) -> subprocess.CompletedPr
 
 
 def prepare(slug: str, arm: str, work: Path) -> None:
-    shutil.rmtree(work, ignore_errors=True)
+    # git marks object files read-only; Windows rmtree needs the flag cleared to delete them
+    if work.exists():
+        shutil.rmtree(work, onexc=lambda f, path, _: (os.chmod(path, stat.S_IWRITE), f(path)))
     work.mkdir(parents=True)
     for f in (TASKS_DIR / slug).iterdir():
         if f.name.endswith(".py"):
@@ -110,6 +113,9 @@ def prompt(slug: str) -> str:
 
 
 def run_agent(slug: str, arm: str, rep: int) -> dict:
+    done_file = OUT / arm / f"{slug}-r{rep}.json"
+    if done_file.exists():  # resume: never re-run (and re-pay for) a finished run
+        return json.loads(done_file.read_text(encoding="utf-8"))
     work = WORK / arm / f"{slug}-r{rep}"
     (OUT / arm).mkdir(parents=True, exist_ok=True)
     prepare(slug, arm, work)
