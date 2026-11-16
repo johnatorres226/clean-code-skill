@@ -62,6 +62,7 @@ SEVERITY = {"high": 3, "medium": 2, "low": 1}
 class Cfg:  # set once from the CLI
     variant = "current"
     model = "claude-sonnet-5-5"  # pinned: an unpinned CLI default silently drifted across runs
+    halted = False  # set when the usage limit is hit
     plugin_dir = ROOT
     claude_md = DEFAULT_CLAUDE_MD
 
@@ -128,9 +129,20 @@ def run_claude(cwd: Path, text: str, plugin: bool, model: str | None = None,
     if plugin:
         cmd += ["--plugin-dir", str(Cfg.plugin_dir)]
     cmd += ["--model", model or Cfg.model]
+    if Cfg.halted:
+        raise UsageLimit
     done = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8",
                           env=py_env(), timeout=1800)
-    return [json.loads(line) for line in done.stdout.splitlines() if line.startswith("{")]
+    events = [json.loads(line) for line in done.stdout.splitlines() if line.startswith("{")]
+    final = next((e for e in reversed(events) if e.get("type") == "result"), {})
+    if final.get("is_error") and "limit" in str(final.get("result", "")).lower():
+        Cfg.halted = True  # circuit breaker: every later run would fail the same way
+        raise UsageLimit
+    return events
+
+
+class UsageLimit(Exception):
+    """Raised once the account's usage limit is hit; the run stops and resumes later."""
 
 
 def usage(events: list[dict]) -> dict:
@@ -208,10 +220,18 @@ def git_metrics(work: Path, slug: str) -> dict:
                                             f"{module(slug)}.py").stdout.strip())}
 
 
+def finished(path: Path) -> dict | None:
+    """A saved result counts only if valid: a usage-limit or API error is re-run on resume."""
+    if not path.exists():
+        return None
+    result = json.loads(path.read_text(encoding="utf-8"))
+    return result if result.get("valid", True) else None
+
+
 def phase1(slug: str, arm: str, rep: int) -> dict:
     out = Cfg.out() / arm / f"{slug}-r{rep}.json"
-    if out.exists():  # resume: never re-run (and re-pay for) a finished run
-        return json.loads(out.read_text(encoding="utf-8"))
+    if done := finished(out):  # resume: never re-run (and re-pay for) a finished run
+        return done
     work = Cfg.work() / arm / f"{slug}-r{rep}"
     prepare(slug, arm, work)
     events = run_claude(work, f"Complete the task described in INSTRUCTIONS.md by editing {module(slug)}.py. "
@@ -241,12 +261,11 @@ def save(out: Path, result: dict, events: list[dict]) -> None:
 
 def phase2(slug: str, arm: str, rep: int) -> dict | None:
     out = Cfg.out() / "followup" / arm / f"{slug}-r{rep}.json"
-    if out.exists():
-        return json.loads(out.read_text(encoding="utf-8"))
+    if done := finished(out):
+        return done
     src = Cfg.work() / arm / f"{slug}-r{rep}"
-    first = Cfg.out() / arm / f"{slug}-r{rep}.json"
-    if not (TASKS_DIR / slug / "FOLLOWUP.md").exists() or not first.exists() or \
-            not json.loads(first.read_text(encoding="utf-8")).get("tests_pass"):
+    first = finished(Cfg.out() / arm / f"{slug}-r{rep}.json")
+    if not (TASKS_DIR / slug / "FOLLOWUP.md").exists() or not first or not first.get("tests_pass"):
         return None  # only code that solved phase 1 is a fair starting point
     m = module(slug)
     work = Cfg.work() / "followup" / arm / f"{slug}-r{rep}"
@@ -291,11 +310,12 @@ def chain_step(slug: str, arm: str, rep: int, k: int) -> dict | None:
     """Follow-up k on top of step k-1's code. A regression is a hidden suite that passed before
     this step and fails after it; research shows multi-step chains expose what one step cannot."""
     out = Cfg.out() / step_dir(k) / arm / f"{slug}-r{rep}.json"
-    if out.exists():
-        return json.loads(out.read_text(encoding="utf-8"))
+    if done := finished(out):
+        return done
     prev = Cfg.work() / step_dir(k - 1) / arm / f"{slug}-r{rep}"
-    if not (TASKS_DIR / slug / f"FOLLOWUP{k}.md").exists() or             not (Cfg.out() / step_dir(k - 1) / arm / f"{slug}-r{rep}.json").exists():
-        return None
+    if not (TASKS_DIR / slug / f"FOLLOWUP{k}.md").exists() or \
+            not finished(Cfg.out() / step_dir(k - 1) / arm / f"{slug}-r{rep}.json"):
+        return None  # never build a chain step on an invalid (e.g. usage-limited) earlier step
     m = module(slug)
     before = {s: tests_pass(prev, s) for s in hidden_suites(slug, k - 1)}
     work = Cfg.work() / step_dir(k) / arm / f"{slug}-r{rep}"
@@ -343,13 +363,12 @@ def ask_judge(prompt: str) -> tuple[str, float]:
 
 def judge(slug: str, rep: int) -> dict | None:
     out = Cfg.out() / "judge" / f"{slug}-r{rep}.json"
-    if out.exists():
-        return json.loads(out.read_text(encoding="utf-8"))
+    if done := finished(out):
+        return done
     m = module(slug)
     paths = {arm: Cfg.work() / arm / f"{slug}-r{rep}" / f"{m}.py" for arm in ARMS}
-    runs = {arm: Cfg.out() / arm / f"{slug}-r{rep}.json" for arm in ARMS}
-    if not all(p.exists() for p in runs.values()) or \
-            not all(json.loads(p.read_text(encoding="utf-8")).get("tests_pass") for p in runs.values()):
+    runs = {arm: finished(Cfg.out() / arm / f"{slug}-r{rep}.json") for arm in ARMS}
+    if not all(r and r.get("tests_pass") for r in runs.values()):
         return None
     task = (TASKS_DIR / slug / "instructions.md").read_text(encoding="utf-8")[:2500]
     code = {arm: p.read_text(encoding="utf-8") for arm, p in paths.items()}
@@ -468,6 +487,13 @@ def report() -> None:
     (Cfg.out() / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
 
+def safe(fn, *args):
+    try:
+        return fn(*args)
+    except UsageLimit:
+        return None
+
+
 def main(argv: list[str]) -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -497,7 +523,10 @@ def main(argv: list[str]) -> int:
     for stage in (["run", "followup", "chain", "judge"] if cfg.command == "all" else
                   [cfg.command] if cfg.command in jobs else []):
         with ThreadPoolExecutor(cfg.parallel) as pool:
-            list(pool.map(lambda job: job[0](*job[1]), jobs[stage]))
+            list(pool.map(lambda job: safe(job[0], *job[1]), jobs[stage]))
+        if Cfg.halted:
+            print("usage limit hit: stopped launching runs; re-run the same command to resume")
+            break
     report()
     return 0
 
