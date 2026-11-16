@@ -135,8 +135,11 @@ def run_claude(cwd: Path, text: str, plugin: bool, model: str | None = None,
                           env=py_env(), timeout=1800)
     events = [json.loads(line) for line in done.stdout.splitlines() if line.startswith("{")]
     final = next((e for e in reversed(events) if e.get("type") == "result"), {})
-    if final.get("is_error") and "limit" in str(final.get("result", "")).lower():
-        Cfg.halted = True  # circuit breaker: every later run would fail the same way
+    # Circuit breaker: a usage limit, or a CLI that died without a result (e.g. out of memory),
+    # fails every later run the same way.
+    if not final or (final.get("is_error") and "limit" in str(final.get("result", "")).lower()):
+        Cfg.halted = True
+        print(f"halting: {str(final.get('result', '')) or done.stderr[-300:] or 'no output'}")
         raise UsageLimit
     return events
 
@@ -525,10 +528,10 @@ def main(argv: list[str]) -> int:
         with ThreadPoolExecutor(cfg.parallel) as pool:
             list(pool.map(lambda job: safe(job[0], *job[1]), jobs[stage]))
         if Cfg.halted:
-            print("usage limit hit: stopped launching runs; re-run the same command to resume")
+            print("halted (usage limit or agent crash): re-run the same command to resume")
             break
     report()
-    return 0
+    return 1 if Cfg.halted else 0
 
 
 if __name__ == "__main__":
