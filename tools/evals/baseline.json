@@ -1,9 +1,9 @@
 {
   "static": {
     "clean-code": {
-      "skill_tokens": 3269,
+      "skill_tokens": 2245,
       "reference_tokens": 22404,
-      "skillevaluator_score": 89.2
+      "skillevaluator_score": 87.5
     },
     "setup-standards": {
       "skill_tokens": 753,
@@ -20,5 +20,33 @@
       "reference_tokens": 0,
       "skillevaluator_score": 93.8
     }
+  },
+  "bench": {
+    "variant": "v2.0",
+    "phase1.tests_pass": 1.0,
+    "phase1.commits_compliant": 1.0,
+    "phase1.protected_branches_written": 0.0,
+    "phase1.lint_weighted": 7.062,
+    "phase1.mi_structural": 47.819,
+    "phase1.maintainability_index": 56.35,
+    "phase1.comment_ratio": 0.075,
+    "phase1.cognitive_total": 12.625,
+    "phase1.cc_max": 7.875,
+    "phase1.halstead_volume": 261.962,
+    "phase1.ruff_violations": 1.125,
+    "phase1.sloc": 44.125,
+    "phase1.runtime_ms": 0.47,
+    "phase1.turns": 8.625,
+    "phase1.new_tokens": 17646.5,
+    "phase1.cost_usd": 0.152,
+    "phase2.followup_pass": 1.0,
+    "phase2.original_still_pass": 1.0,
+    "phase2.diff_added": 11.062,
+    "phase2.diff_deleted": 0.562,
+    "phase2.turns": 6.938,
+    "phase2.new_tokens": 10916.25,
+    "phase2.cost_usd": 0.062,
+    "phase2.after_mi_structural": 45.094,
+    "phase2.after_cognitive_total": 15.812
   }
 }
