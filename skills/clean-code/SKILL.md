@@ -1,6 +1,10 @@
 ---
 name: clean-code
-description: Language-agnostic clean code standards — naming, function design, comments, formatting, error handling, class design, test-driven development, refactoring, and a full code-smell catalog. Use this skill whenever writing new code, reviewing or critiquing code, refactoring, cleaning up a legacy file, naming things, deciding whether to write a comment, designing a function or class, setting up linters/formatters, writing unit tests or doing TDD, or when the user mentions "clean code", "readable", "maintainable", "code quality", "code review", "refactor", "tech debt", "style guide", or asks how to make code better. Also use it proactively any time you are about to produce more than a trivial amount of code in any language, so that what you write is code the next programmer will thank you for.
+description: Language-agnostic clean code standards for writing, reviewing, and refactoring code — naming, functions, comments, formatting, error handling, class design, TDD, and a smell catalog with IDs. Use when writing more than a few lines of code, reviewing or refactoring code, naming things, deciding on a comment, designing a function or class, or writing tests.
+version: 2.0.0
+metadata:
+  author: johnatorres226
+  tags: [clean-code, refactoring, naming, testing, code-review]
 ---
 
 # Clean Code
