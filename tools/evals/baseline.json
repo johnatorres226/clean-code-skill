@@ -1,0 +1,24 @@
+{
+  "static": {
+    "clean-code": {
+      "skill_tokens": 3269,
+      "reference_tokens": 22404,
+      "skillevaluator_score": 89.2
+    },
+    "setup-standards": {
+      "skill_tokens": 753,
+      "reference_tokens": 0,
+      "skillevaluator_score": 93.8
+    },
+    "ship": {
+      "skill_tokens": 796,
+      "reference_tokens": 0,
+      "skillevaluator_score": 91.2
+    },
+    "verify": {
+      "skill_tokens": 485,
+      "reference_tokens": 0,
+      "skillevaluator_score": 93.8
+    }
+  }
+}
