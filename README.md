@@ -77,6 +77,7 @@ python tools/skill_eval.py run --no-skill --out results/base
 python tools/skill_eval.py run --skill skills/clean-code --out results/skill
 python tools/skill_eval.py compare results/base results/skill
 python tests/test_standards.py                          # enforcement self-check
+pip install skillevaluator && skillevaluator quality-check skills/verify   # NVIDIA static tier
 ```
 
 ### Results
