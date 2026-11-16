@@ -13,5 +13,5 @@ assert r.worse(0.90, 1.00, "min", 0.05, "abs"), "pass-rate drop past absolute to
 assert r.worse(0.01, 0.0, "max", 0.0, "abs"), "any protected-branch write must fail"
 assert r.compare("x", {"skill_tokens": 2000}, {"skill_tokens": 1000}, r.STATIC_RULES)
 assert not r.compare("x", {"skill_tokens": 1000}, {"skill_tokens": 1000}, r.STATIC_RULES)
-assert r.flatten_bench({"phase1": {"cost_usd": {"none": 1, "standards": 2}}}) == {"phase1.cost_usd": 2}
+assert r.flatten_bench({"phase1": {"cost_usd": {"none": 1, "standards": 2}}}) == {"phase1.cost_usd": 2, "models": None}
 print("ok  regress self-check")

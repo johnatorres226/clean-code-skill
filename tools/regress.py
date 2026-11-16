@@ -84,8 +84,10 @@ def compare(label: str, current: dict, base: dict, rules: list) -> list[str]:
 
 def flatten_bench(summary: dict) -> dict:
     """{'phase1': {'cost_usd': {'standards': x}}} -> {'phase1.cost_usd': x} (standards arm)."""
-    return {f"{phase}.{key}": arms.get("standards")
+    flat = {f"{phase}.{key}": arms.get("standards")
             for phase in ("phase1", "phase2") for key, arms in summary.get(phase, {}).items()}
+    flat["models"] = summary.get("models")
+    return flat
 
 
 def self_check() -> list[str]:
@@ -112,7 +114,11 @@ def main(argv: list[str]) -> int:
             failures += compare(skill, metrics, base.get("static", {}).get(skill, {}), STATIC_RULES)
     elif command == "bench":
         summary = json.loads((ROOT / "results" / "bench" / argv[1] / "summary.json").read_text(encoding="utf-8"))
-        failures += compare(f"bench {argv[1]}", flatten_bench(summary), base.get("bench", {}), BENCH_RULES)
+        current = flatten_bench(summary)
+        if current["models"] != base.get("bench", {}).get("models"):
+            failures.append(f"model mismatch: baseline {base.get('bench', {}).get('models')} vs {current['models']} "
+                            "(a cross-model comparison is not a regression test)")
+        failures += compare(f"bench {argv[1]}", current, base.get("bench", {}), BENCH_RULES)
     print("\n" + ("REGRESSIONS:\n  " + "\n  ".join(failures) if failures else "no regressions"))
     return 1 if failures else 0
 
