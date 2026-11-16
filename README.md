@@ -126,6 +126,11 @@ highest-value rules and the skills hold the depth.
 **Retracted.** An earlier "−40% cost per task" came from runs whose model had drifted between arms;
 the clean, pinned measurement above shows a cost *increase*.
 
+**Rejected candidate (v2.3).** Trimming the process lines ("branch in one step", "run the check
+once, right before you commit") to cut cost passed the regression gate but missed its goal: new
+tokens −2.3% [−5.4%, +1.0%] versus v2.1 (n = 32, Sonnet), while cognitive complexity rose +0.7
+[+0.03, +1.3]. No gain, so no version bump.
+
 **Rejected candidate (v2.2).** Adding "docstrings on public APIs" to the block barely moved the
 comment ratio, lowered the judge's preference, and failed the regression gate on ruff violations.
 It was measured before model pinning, so the rejection is provisional; the variant file is kept in
