@@ -32,6 +32,7 @@ standards.toml                          → repo root (gates filled from step 1)
 .github/workflows/standards.yml         → add the toolchain install step the gates need
 .github/pull_request_template.md
 .editorconfig  .gitattributes
+CLAUDE.standards.md                     → appended to CLAUDE.md in step 5
 ```
 
 Then activate the hooks: `git config core.hooksPath .githooks`. This is per-clone, so it also
@@ -60,19 +61,10 @@ status check still required. If `gh` lacks admin rights, print the command for t
 
 ## 5. The always-loaded block
 
-Add this to `CLAUDE.md` (or `AGENTS.md` if that is what the repo uses; never create both). If a
-`## Standards` section exists, update it in place.
-
-```markdown
-## Standards
-
-Rules: `standards.toml`. Hooks and CI enforce them — fix failures, never bypass (`--no-verify`).
-- Branch from `dev` as `<type>/<slug>`; never commit or push to `main`/`dev`.
-- One concern per commit, Conventional Commit subject, within the size limits.
-- Done = `python3 .githooks/standards.py check` green + evidence. Skill: `verify`.
-- PR to `dev`, review pass, merge per `[branches].merge`. Only `dev` merges to `main`. Skill: `ship`.
-- Writing or reviewing code: skill `clean-code`.
-```
+Append `templates/CLAUDE.standards.md` to `CLAUDE.md` (or `AGENTS.md` if that is what the repo
+uses; never create both). If a `## Standards` section exists, replace it in place. Keep the text
+as shipped: it is the measured variant (tools/bench.py), and its one code line is what moved
+agent code quality, since headless agents rarely load skills on their own.
 
 ## 6. Prove it and commit
 

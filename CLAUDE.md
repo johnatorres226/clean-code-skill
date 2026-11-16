@@ -19,4 +19,6 @@ This repo adopts its own plugin. Rules: `standards.toml`; hooks live in
 - Branch from `dev` as `<type>/<slug>`; never commit or push to `main`/`dev`.
 - One concern per commit, Conventional Commit subject, within the size limits.
 - Done = `python skills/setup-standards/templates/.githooks/standards.py check` green.
+- Code: one job per function (≤ 20 lines, ≤ 3 params, no boolean-flag params, nesting ≤ 2),
+  named constants instead of magic numbers, comments only for *why*. Full procedure: skill `clean-code`.
 - Maintainer tools: `tools/skill_audit.py`, `tools/skill_eval.py`, `tests/test_standards.py`.
