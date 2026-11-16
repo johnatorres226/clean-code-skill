@@ -81,55 +81,59 @@ python tools/regress.py static          # every PR (CI): token cost, SkillEvalua
 python tools/regress.py bench NAME      # before release: agent tier vs tools/evals/baseline.json
 ```
 
-**Methods.** Agent benchmark: 8 Exercism tasks (3 refactoring), 2 runs each, n = 16 per arm,
-Claude Opus 5.5 headless, isolated from operator hooks and plugins. Code metrics are established
-ones: McCabe cyclomatic complexity (1976), Cognitive Complexity (Campbell 2018; validated against
-human understandability, Muñoz Barón et al., ESEM 2020), Halstead volume (1977), Maintainability
-Index (Oman & Hagemeister 1992) reported **structurally**, because its comment term rewards
-comment density (Heitlager et al. 2007). Phase 2 measures change cost: a neutral agent, identical
-in both arms, extends each arm's code against hidden tests. The blind judge (Claude Sonnet 5.5)
-sees each pair in both orders and counts only order-consistent verdicts (Zheng et al. 2023).
-p-values: sign-flip permutation test over per-task differences.
+**Methods.** Agent benchmark: 32 Exercism tasks (24 never used for tuning), 1 run per task per
+arm, every agent pinned to one model (`--model`; an unpinned default silently drifted between
+Opus, Sonnet and Haiku and invalidated an earlier cost result). Agents run headless, isolated from
+operator hooks and plugins. Code metrics are established ones: McCabe cyclomatic complexity (1976),
+Cognitive Complexity (Campbell 2018; validated against human understandability, Muñoz Barón et al.,
+ESEM 2020), Halstead volume (1977), Maintainability Index (Oman & Hagemeister 1992) reported
+**structurally**, because its comment term rewards comment density (Heitlager et al. 2007).
+Change cost: on 8 tasks a neutral agent, identical in both arms, applies a 3-step chain of hidden
+follow-up requirements to each arm's code. The blind judge (Claude Sonnet 5.5) sees each pair in
+both orders and counts only order-consistent verdicts (Zheng et al. 2023). Statistics: per-task
+paired differences, sign-flip permutation p-values and bootstrap 95% CIs (tasks are the unit).
 
 ### Results (shipped version, v2.1)
 
-| Agent benchmark | No standards | Standards | p |
+| Agent benchmark, Claude Sonnet 5.5, n = 32 tasks | No standards | Standards | Δ per task [95% CI] |
 |---|---|---|---|
 | Tests pass | 100% | 100% | — |
-| Commits standards-compliant | 19% | **100%** | 0.009 |
-| Wrote directly to `main`/`dev` | 100% | **0%** | 0.009 |
-| Lint severity | 10.4 | **2.6 (−75%)** | 0.017 |
-| Cognitive complexity (total) | 15.8 | **10.1 (−36%)** | 0.023 |
-| Max cyclomatic complexity | 9.8 | **4.9 (−50%)** | 0.023 |
-| Maintainability Index, structural | 48.5 | 48.3 | 0.80 |
-| Cost per task | $0.15 | **$0.09 (−40%)** | 0.048 |
-| **Change cost:** tokens to apply a follow-up | 10.2k | **9.6k (−5%)** | 0.023 |
-| **Change cost:** cognitive complexity after it | 19.8 | **12.8 (−36%)** | 0.039 |
-| **Blind judge:** preferred | 1 | **12** (3 ties) | ≈ 0.003 (sign test) |
+| Commits standards-compliant | 22% | **100%** | +78 pp [+62, +91] |
+| Wrote directly to `main`/`dev` | 100% | **0%** | −100 pp |
+| Lint severity | 6.25 | **2.16 (−65%)** | −4.1 [−6.6, −2.2] |
+| Cognitive complexity (total) | 14.5 | **8.1 (−44%)** | −6.3 [−10.3, −3.3] |
+| Max cyclomatic complexity | 7.9 | **4.4 (−44%)** | −3.5 [−5.1, −2.0] |
+| Halstead volume | 236 | **170 (−28%)** | −66 [−115, −25] |
+| Maintainability Index, structural | 51.5 | 51.3 | −0.3 [−1.7, +1.0] |
+| New tokens per task | 12.2k | 14.2k (**+16%**) | +1.95k [+1.4k, +2.6k] |
+| Cost per task | $0.07 | $0.08 | +$0.01 |
+| **Blind judge:** preferred | 5 | **20** (7 ties) | p ≈ 0.004 (sign test) |
+| **Change chain:** all suites pass after 3 steps | 75% | 75% | 0 |
+| **Change chain:** cognitive complexity after | 25.3 | **18.1** | −7.1 [−14.3, −0.4] |
 
-| Code-quality eval (`clean-code` read; 6 cases × 3 runs) | No skill | v2.0 | **v2.1** |
-|---|---|---|---|
-| Weighted lint severity | 37.0 | 19.0 | **16.0** |
-| Lint-clean cases | 5/18 | 7/18 | **9/18** |
-| Cost per 6 cases | $0.32 | $0.95 | **$0.31** |
+Claude Haiku 5.5 on the 24 held-out tasks agrees: lint −77%, cognitive complexity −41%, max
+cyclomatic −33%, Halstead −13% (all CIs exclude 0), at +45% new tokens.
 
 NVIDIA SkillEvaluator 0.9.0 static quality: `clean-code` 87.5 (v1.1 was 77.0), `verify` 93.8,
 `ship` 91.2, `setup-standards` 93.8.
 
-**Verdict.** The standards make agent output compliant, measurably simpler, preferred by a blind
-reviewer, and cheaper to change — at **lower** cost per task than no standards. The effect comes
-from the always-loaded `CLAUDE.md` block and the hooks: headless agents invoked a skill in 1 of 16
-runs, so the block carries the highest-value rules and the skills hold the depth.
+**Verdict.** The standards make agent output compliant, measurably simpler, and preferred by a
+blind reviewer, for about +16% tokens per task on Sonnet. Code stays simpler through later changes,
+but the chains did not separate on correctness. The effect comes from the always-loaded `CLAUDE.md`
+block and the hooks: headless agents rarely invoke a skill, so the block carries the
+highest-value rules and the skills hold the depth.
+
+**Retracted.** An earlier "−40% cost per task" came from runs whose model had drifted between arms;
+the clean, pinned measurement above shows a cost *increase*.
 
 **Rejected candidate (v2.2).** Adding "docstrings on public APIs" to the block barely moved the
-comment ratio (0.01 → 0.02), lowered the judge's preference (12–1 → 9–4), raised change cost, and
-failed the regression gate on ruff violations. v2.1 stays; the variant file is kept in
-`tools/evals/variants/` so the result is reproducible.
+comment ratio, lowered the judge's preference, and failed the regression gate on ruff violations.
+It was measured before model pinning, so the rejection is provisional; the variant file is kept in
+`tools/evals/variants/`.
 
-**Limits.** n = 2 runs per task; single-file Python tasks; follow-ups too easy to separate pass
-rates (both 100%); the v2.1 change also trimmed `SKILL.md`, so the two are not separated;
-v2.1 code carries almost no comments (comment ratio 0.12 → 0.01). Multi-file and SWE-bench-scale
-runs need Docker and were not run.
+**Limits.** 1 run per task; single-file Python tasks; change chains too easy to separate pass
+rates; v2.1 code carries almost no comments. Multi-file and SWE-bench-scale runs need Docker and
+were not run.
 
 ## Bibliography
 
