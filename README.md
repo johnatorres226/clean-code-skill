@@ -136,7 +136,16 @@ comment ratio, lowered the judge's preference, and failed the regression gate on
 It was measured before model pinning, so the rejection is provisional; the variant file is kept in
 `tools/evals/variants/`.
 
-**Limits.** 1 run per task; single-file Python tasks; change chains too easy to separate pass
+**Robustness.** On the 24 held-out tasks alone, with a Holm correction across 8 metrics, lint
+(p = 0.002), cognitive complexity (p < 0.001), max cyclomatic complexity (p = 0.002) and the token
+increase (p < 0.001) stay significant; Halstead becomes borderline (p = 0.058). Every solution in
+both arms passes its tests.
+
+**Limits** (from an independent audit of methods). Compliance is enforced by the hooks, so it
+measures enforcement, not learning. Max CC and lint partly mirror the block's own rules; Halstead,
+the judge and the change chains are the less circular signals. The judge shares the agent's model
+family. 1 run per task and no A/A replicate, so small variant deltas (v2.2, v2.3) are within
+unmeasured run-to-run noise. Single-file Python tasks; change chains too easy to separate pass
 rates; v2.1 code carries almost no comments. Multi-file and SWE-bench-scale runs need Docker and
 were not run.
 
