@@ -92,7 +92,7 @@ def prepare(slug: str, arm: str, work: Path) -> None:
         shutil.copytree(TEMPLATES / ".githooks", work / ".githooks")
         toml = (TEMPLATES / "standards.toml").read_text(encoding="utf-8")
         (work / "standards.toml").write_text(
-            toml.replace('test      = ""', 'test      = "python -m unittest discover -q -p '*_test.py'"'), encoding="utf-8")
+            toml.replace('test      = ""', 'test      = "python -m unittest discover -q -p *_test.py"'), encoding="utf-8")
         (work / "CLAUDE.md").write_text(CLAUDE_MD, encoding="utf-8")
     sh(work, "git", "add", "-A")
     sh(work, "git", "commit", "-q", "-m", "chore: init")
