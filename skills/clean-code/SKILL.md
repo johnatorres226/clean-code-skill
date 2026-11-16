@@ -9,47 +9,17 @@ metadata:
 
 # Clean Code
 
-Code is read far more often than it is written. Every line you write is a message to the next
-programmer — who is very often yourself, six months from now, at 2 a.m., under pressure. This
-skill exists to make that message clear, honest, and short.
+Done means a stranger can read each function top to bottom, once, and know what it does and why.
+When rules conflict, resolve in this order: **correct** (including boundaries) → **clear** →
+**small** (functions, classes, arguments, nesting) → **fast enough** (measured, never guessed;
+isolate any necessary ugliness behind a clean name).
 
-The standard this skill holds you to: **someone unfamiliar with the code should be able to read a
-function top to bottom, once, and know what it does and why.** If they have to scroll, decode,
-or guess, the code is not done.
+## Load only what the task needs
 
-## The four qualities
-
-Every judgment call in this skill resolves against these, in this order when they conflict:
-
-1. **Correct** — it does the right thing, including at the boundaries. Beauty never outranks truth.
-2. **Clear** — intent is on the surface. The reader spends attention on the problem, not the code.
-3. **Small** — small functions, small classes, small files, few arguments, shallow nesting.
-   Smallness is what makes clarity survivable as the system grows.
-4. **Fast enough** — measured, not guessed. Optimize only where a profiler points, and when you
-   do, isolate the ugly part behind a clean name and comment *why*.
-
-Efficiency and beauty are not opposed. A tight, well-named, non-duplicated function is usually
-also the fast one, because it is the one that is easy to make fast.
-
-## How to use this skill — triage before you load
-
-The references total ~22,000 tokens. Loading them naively costs more than it returns. Work in
-this order and stop as soon as you have what you need.
-
-**Step 1 — run the repo's linter instead of reading.** Anything mechanical is cheaper to detect
-than to look up. The lint and format commands are in the repo's `standards.toml` (see the `verify`
-skill); fix what they report before reading anything here.
-
-**Step 2 — load one reference. Two if the task genuinely spans two areas.**
-
-This is a default, not a cap. Go to three when the task really is that wide — "refactor this
-legacy module and get it under test" legitimately needs `refactoring.md` and `tdd-and-tests.md`.
-Skipping a needed file to obey a budget produces worse work and hides the fact that it did. Load
-what the task needs, and know what each file costs before you open it.
-
-References are language-agnostic: examples are neutral pseudocode. Language idioms — casing,
-formatter rules, framework syntax — are the job of the repo's linter and formatter config, not of
-this skill. Follow the ecosystem's idioms; let the tools enforce them.
+Run the repo's linter first (`standards.toml` gates) and fix what it reports. Then act on the
+procedures below; open a reference only when a section's **Open the reference when** line
+matches your situation — usually one file, two or three when the task genuinely spans areas.
+Examples in references are language-neutral pseudocode; the repo's linter owns language idioms.
 
 | Task | Read | ~Tokens |
 |---|---|---|
@@ -64,22 +34,8 @@ this skill. Follow the ecosystem's idioms; let the tools enforce them.
 | Running a formal review | `references/review-rubric.md` | 1,400 |
 | Looking up a smell | `references/smells-catalog.md` | **grep it — see Step 3** |
 
-**Step 3 — never read the smells catalog whole.** It is the largest file (~4,800 tokens) and it
-is a lookup table. Grep the entry you want:
-
-```bash
-grep -A4 '^\*\*G25' references/smells-catalog.md               # one entry, ~60 tokens
-grep -A4 -E '^\*\*(F3|G25|G30)' references/smells-catalog.md    # several at once
-```
-
-If you are browsing rather than looking up a known ID, read only its `## Index` section (~630
-tokens) — one line per entry across all 66 — then grep the ones that look relevant. Read the file
-in full only for a deep audit of unfamiliar code.
-
-**Step 4 — the sections below are self-contained.** Naming, TDD, and refactoring each have a
-working summary here. Act on it directly for ordinary cases. Each one ends with an **Open the
-reference when** line naming the specific situations the summary does not cover — that line, not
-a vague sense of needing more, is the signal to load the file.
+Never read the smell catalog whole: `grep -A4 -E '^\*\*(G25|F3)' references/smells-catalog.md`
+returns just those entries (~60 tokens each); its `## Index` lists all 66 in one line each.
 
 ## Writing a function — the procedure
 
@@ -165,41 +121,19 @@ name is a numeric quantity and you are unsure how to encode the unit; you are ch
 plausible names and need the scope-vs-length rule; you are setting a project-wide vocabulary; or
 you are renaming across an existing codebase and need the anti-pattern table.
 
-## Test-driven development — the loop
+## Tests
 
-Tests are not an accessory to clean code; they are what *permits* it. Without tests you cannot
-refactor, and without refactoring code decays. Tests are the thing that keeps the code soft.
+Tests are what permit clean code: without them you cannot refactor. Work red → green →
+refactor in minutes-long cycles, and watch each new test fail first. Tests are production code:
 
-**Red → Green → Refactor:**
+- One behavior per test, named as a sentence (`withdraw_fails_when_balance_below_amount`),
+  arrange–act–assert visibly separated.
+- Fast, independent, repeatable (inject the clock, seed randomness), self-validating.
+- Cover the boundaries: empty, one, many, max, off-by-one, invalid, duplicate.
+- Assert observable behavior, not internal calls; prefer fakes to mocks.
 
-1. **Red** — write the smallest failing test that expresses the next piece of desired behavior.
-   Watch it fail, for the right reason. A test you never saw fail is a test you cannot trust.
-2. **Green** — write the least code that passes. Ugly is fine here. Do not design ahead.
-3. **Refactor** — now clean both the production code *and the test*, with the safety net on.
-   This third step is where the design actually happens. Skipping it is why teams conclude "TDD
-   didn't work."
-
-Keep the cycle to minutes, not hours.
-
-**Test quality rules — tests are production code:**
-
-- **One assert concept per test.** A test should fail for exactly one reason.
-- **Follow Arrange–Act–Assert** (Given–When–Then). Make the three blocks visually obvious.
-- **Name the test as a sentence about behavior**: `withdraw_fails_when_balance_below_amount`, not
-  `test_withdraw_2`.
-- **F.I.R.S.T.** — Fast, Independent (no order dependence, no shared mutable state), Repeatable
-  (any machine, offline), Self-validating (pass/fail, no eyeballing logs), Timely (written with
-  or before the code).
-- **Test behavior at the boundary**, not the internals: empty, one, many, max, off-by-one,
-  negative, null/None, overflow, duplicate, unicode, concurrent.
-- **Do not skip trivial tests** — they document intent cheaply. A disabled test is an unanswered
-  question; either fix it or delete it and record the ambiguity.
-- Coverage is a *diagnostic*, not a goal. Use it to find untested branches, not to hit a number.
-
-**Open `references/tdd-and-tests.md` when:** you are writing the tests rather than just deciding
-to; you need framework syntax (pytest, JUnit 5, GoogleTest, Unity); you are choosing between a
-stub, fake, spy, and mock; you are getting untested legacy code under test (characterization
-tests, seams, extract-and-inject); or you need the worked red-green-refactor session.
+**Open `references/tdd-and-tests.md` when:** writing the tests rather than deciding to; choosing
+between stub, fake, spy, and mock; or getting untested legacy code under test.
 
 ## Refactoring — the discipline
 
@@ -247,17 +181,3 @@ collaborators instead of constructing them. The repo's linter and formatter enfo
 half-converted to a better style. Match the surrounding conventions, apply the Boy Scout Rule
 within them, and raise the broader style question separately rather than smuggling a migration
 into an unrelated change.
-
-## Bibliography
-
-The principles here follow the tradition established by:
-
-- Robert C. Martin, *Clean Code: A Handbook of Agile Software Craftsmanship* (Prentice Hall, 2008)
-  — the source of the smell/heuristic ID scheme (N*, F*, C*, G*, T*, E*) referenced in
-  `references/smells-catalog.md`.
-- Martin Fowler, *Refactoring: Improving the Design of Existing Code*, 2nd ed. (2018).
-- Kent Beck, *Test-Driven Development: By Example* (2002).
-- Andrew Hunt & David Thomas, *The Pragmatic Programmer* (1999).
-- Michael Feathers, *Working Effectively with Legacy Code* (2004).
-- Scott Meyers, *Effective Modern C++* (2014); Joshua Bloch, *Effective Java*, 3rd ed. (2018).
-- PEP 8 and PEP 20; the ISO C++ Core Guidelines; the Google style guides.
