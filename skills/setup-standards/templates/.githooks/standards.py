@@ -5,7 +5,7 @@
   staged               pre-commit: block commits on protected branches and oversized commits
   commit-msg FILE      commit-msg: Conventional Commit format
   pre-push             pre-push: block pushes to protected branches, bad branch names; run check
-  range BASE           CI: every commit in BASE..HEAD passes message + size, PR total within limit
+  range BASE [--no-size]  CI: every commit in BASE..HEAD passes message + size, PR total within limit
   guard                Claude Code PreToolUse hook: block bypasses of the above (exit 2)
 """
 from __future__ import annotations
@@ -54,23 +54,25 @@ def message_problem(msg: str, cfg: dict) -> str | None:
     return None
 
 
-def changed_lines(numstat: str, exclude: list[str]) -> tuple[int, int]:
-    """(lines, files) from `git diff --numstat`, skipping excluded globs and binaries."""
+def added_lines(numstat: str, exclude: list[str]) -> tuple[int, int]:
+    """(added lines, files with additions) from `git diff --numstat`.
+
+    Deletions are free: a size limit must never block cleanup. Excluded globs and binaries skip."""
     lines = files = 0
     for row in numstat.splitlines():
         added, deleted, path = row.split("\t", 2)
-        if added == "-" or any(fnmatch.fnmatch(path, g) for g in exclude):
+        if added in ("-", "0") or any(fnmatch.fnmatch(path, g) for g in exclude):
             continue
-        lines += int(added) + int(deleted)
+        lines += int(added)
         files += 1
     return lines, files
 
 
 def size_problem(numstat: str, cfg: dict, limit_key: str = "commits") -> str | None:
     limits = cfg[limit_key]
-    lines, files = changed_lines(numstat, cfg.get("size", {}).get("exclude", []))
-    if lines > limits["max_changed_lines"]:
-        return f"{lines} changed lines (max {limits['max_changed_lines']}) — split it"
+    lines, files = added_lines(numstat, cfg.get("size", {}).get("exclude", []))
+    if lines > limits["max_added_lines"]:
+        return f"{lines} added lines (max {limits['max_added_lines']}) — split it"
     if files > limits.get("max_files", files):
         return f"{files} files (max {limits['max_files']}) — split it"
     return None
@@ -119,13 +121,13 @@ def cmd_pre_push(cfg: dict, stdin: str) -> int:
     return cmd_check(cfg, fast=False)
 
 
-def cmd_range(cfg: dict, base: str) -> int:
+def cmd_range(cfg: dict, base: str, check_size: bool) -> int:
     for sha in git("rev-list", "--no-merges", f"{base}..HEAD").split():
         problem = message_problem(git("log", "-1", "--format=%B", sha), cfg) or \
-            size_problem(git("show", "--numstat", "--format=", sha), cfg)
+            (check_size and size_problem(git("show", "--numstat", "--format=", sha), cfg))
         if problem:
             return fail(f"commit {sha[:8]}: {problem}")
-    problem = size_problem(git("diff", "--numstat", f"{base}...HEAD"), cfg, "pr")
+    problem = check_size and size_problem(git("diff", "--numstat", f"{base}...HEAD"), cfg, "pr")
     return fail(f"PR: {problem}") if problem else 0
 
 
@@ -158,6 +160,7 @@ def cmd_guard(cfg: dict, stdin: str) -> int:
 
 def main(argv: list[str]) -> int:
     sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
     cfg = load()
     if cfg is None:
         return 0  # repo has not adopted standards.toml — never impose on it
@@ -171,7 +174,7 @@ def main(argv: list[str]) -> int:
     if cmd == "pre-push":
         return cmd_pre_push(cfg, sys.stdin.read())
     if cmd == "range":
-        return cmd_range(cfg, args[0])
+        return cmd_range(cfg, args[0], check_size="--no-size" not in args)
     if cmd == "guard":
         return cmd_guard(cfg, sys.stdin.read())
     print(__doc__)

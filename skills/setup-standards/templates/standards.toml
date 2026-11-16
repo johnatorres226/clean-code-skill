@@ -11,15 +11,15 @@ merge       = "rebase"                 # feature -> dev keeps atomic commits; de
 [commits]                              # Conventional Commits, one concern each
 types             = ["feat", "fix", "refactor", "perf", "test", "docs", "chore", "ci", "build", "revert"]
 max_subject       = 72
-max_changed_lines = 300
+max_added_lines   = 300
 max_files         = 10
 
 [pr]
-max_changed_lines = 400                # review quality drops sharply past ~400 lines
+max_added_lines   = 400                # review quality drops sharply past ~400 lines
 max_files         = 25
 reviews_required  = 1
 
-[size]
+[size]                                 # deletions never count; PR label `size-exempt` skips size checks
 exclude = ["*.lock", "*-lock.json", "*.min.*", "*.snap", "vendor/*", "dist/*"]
 
 [gates]                                # shell commands, run in this order; "" = not applicable
