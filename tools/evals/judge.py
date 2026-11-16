@@ -47,6 +47,8 @@ def pairwise(ask: Ask, task: str, first_code: str, second_code: str,
     v1, v2 = parse_verdict(reply1), parse_verdict(reply2)
     pick1 = {"A": a_label, "B": b_label}.get(v1.get("better"), "tie")
     pick2 = {"A": b_label, "B": a_label}.get(v2.get("better"), "tie")
+    if not v1.get("better") or not v2.get("better"):  # an unparseable reply is no verdict, not a tie
+        return {"valid": False, "replies": [reply1[-300:], reply2[-300:]], "cost_usd": cost1 + cost2}
     return {
         "order1": pick1, "order2": pick2,
         "winner": pick1 if pick1 == pick2 else "tie",  # disagreement across orders = position bias
@@ -66,4 +68,5 @@ if __name__ == "__main__":
         '{"better": "%s", "score_A": 5, "score_B": 5}' % ("A" if prompt.index("good()") <
                                                           prompt.index("bad()") else "B"), 0.0)
     assert pairwise(consistent, "t", "bad()", "good()")["winner"] == "standards"
+    assert pairwise(lambda prompt: ("garbled", 0.0), "t", "a", "b")["valid"] is False
     print("ok  judge self-check")
