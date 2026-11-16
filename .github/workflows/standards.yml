@@ -19,7 +19,8 @@ jobs:
         run: python3 skills/setup-standards/templates/.githooks/standards.py range origin/${{ github.base_ref }} ${{ contains(github.event.pull_request.labels.*.name, 'size-exempt') && '--no-size' || '' }}
       - name: Gates
         run: python3 skills/setup-standards/templates/.githooks/standards.py check
-      - name: Skill quality (NVIDIA SkillEvaluator, static tier)
+      - name: Skill regression gate (token cost, SkillEvaluator quality, self-checks)
         run: |
           pip install --quiet skillevaluator
-          for skill in skills/*/; do skillevaluator quality-check "$skill"; done
+          python tests/test_regress.py
+          python tools/regress.py static
