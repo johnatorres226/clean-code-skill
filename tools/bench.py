@@ -31,7 +31,8 @@ ROOT = Path(__file__).resolve().parent.parent
 TASKS_DIR = ROOT / "tools" / "evals" / "benchmarks"
 OUT = ROOT / "results" / "bench"
 # Work dirs must live outside the plugin dir: files under --plugin-dir are protected from edits.
-WORK = Path(tempfile.gettempdir()) / "ccs-bench"
+# resolve(): a Windows 8.3 short path (JOHTOR~1) is treated as sensitive and blocks edits
+WORK = Path(tempfile.gettempdir()).resolve() / "ccs-bench"
 TEMPLATES = ROOT / "skills" / "setup-standards" / "templates"
 TASKS = ["ledger", "markdown", "tree-building", "bowling", "forth", "wordy", "poker", "book-store"]
 ARMS = ["none", "standards"]
@@ -163,6 +164,7 @@ def score(slug: str, arm: str, work: Path, stream: str) -> dict:
     usage = final.get("usage", {})
     return {
         "task": slug, "arm": arm,
+        "valid": not final.get("is_error", True),  # usage-limit / API errors never count
         "tests_pass": tests.returncode == 0,
         "tests_output_tail": (tests.stderr or tests.stdout)[-300:],
         "lint_findings": len(findings),
@@ -185,6 +187,7 @@ def score(slug: str, arm: str, work: Path, stream: str) -> dict:
 
 def report() -> None:
     rows = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(OUT.glob("*/*.json"))]
+    rows = [r for r in rows if r.get("valid", True)]
     print(f"\n{'metric':<34}" + "".join(f"{a:>12}" for a in ARMS))
     def mean(arm, key, fn=float):
         vals = [fn(r[key]) for r in rows if r["arm"] == arm]
