@@ -45,14 +45,7 @@ ARMS = ["none", "standards"]
 GH = shutil.which("gh") or r"C:\Program Files\GitHub CLI\gh.exe"
 PY_DIR = str(Path(sys.executable).parent)
 JUDGE_MODEL = "claude-sonnet-5-5"  # a different model from the agent under test
-DEFAULT_CLAUDE_MD = """## Standards
-
-Rules: `standards.toml`. Hooks enforce them — fix failures, never bypass (`--no-verify`).
-- Branch from `dev` as `<type>/<slug>`; never commit or push to `main`/`dev`.
-- One concern per commit, Conventional Commit subject, within the size limits.
-- Done = `python .githooks/standards.py check` green + evidence. Skill: `verify`.
-- Writing or reviewing code: skill `clean-code`. Committing: skill `ship`.
-"""
+DEFAULT_CLAUDE_MD = (TEMPLATES / "CLAUDE.standards.md").read_text(encoding="utf-8")  # what setup-standards ships
 
 sys.path.insert(0, str(TEMPLATES / ".githooks"))
 sys.path.insert(0, str(ROOT / "tools" / "evals"))
@@ -85,12 +78,13 @@ def module(slug: str) -> str:
 
 
 def sh(cwd: Path, *args: str, env: dict | None = None, timeout: int | None = None):
-    return subprocess.run(args, cwd=cwd, capture_output=True, text=True, encoding="utf-8",
+    return subprocess.run(args, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace",
                           env=env, timeout=timeout)
 
 
 def py_env() -> dict:
-    return {**os.environ, "PATH": PY_DIR + os.pathsep + os.environ["PATH"]}
+    # PYTHONIOENCODING: child Pythons on Windows otherwise print cp1252 (e.g. the ledger "£")
+    return {**os.environ, "PATH": PY_DIR + os.pathsep + os.environ["PATH"], "PYTHONIOENCODING": "utf-8"}
 
 
 def fresh_dir(path: Path) -> None:
@@ -303,7 +297,8 @@ def judge(slug: str, rep: int) -> dict | None:
     result = {"task": slug, "rep": rep, **pairwise(ask_judge, task, code["none"], code["standards"])}
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2), encoding="utf-8")
-    print(f"judge {slug:<14} r{rep} {result['order1']}/{result['order2']} -> {result['winner']}", flush=True)
+    print(f"judge {slug:<14} r{rep} {result.get('order1', 'invalid')}/{result.get('order2', '-')} "
+          f"-> {result.get('winner', 'invalid')}", flush=True)
     return result
 
 
