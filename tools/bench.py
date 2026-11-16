@@ -40,7 +40,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TASKS_DIR = ROOT / "tools" / "evals" / "benchmarks"
 TEMPLATES = ROOT / "skills" / "setup-standards" / "templates"
-TASKS = ["ledger", "markdown", "tree-building", "bowling", "forth", "wordy", "poker", "book-store"]
+# The 8 tasks v2.0/v2.1 were tuned on; everything else under benchmarks/ is held out.
+TUNING_TASKS = ["ledger", "markdown", "tree-building", "bowling", "forth", "wordy", "poker", "book-store"]
+TASKS = sorted(d.name for d in TASKS_DIR.iterdir() if (d / f"{d.name.replace('-', '_')}_test.py").exists())
 ARMS = ["none", "standards"]
 GH = shutil.which("gh") or r"C:\Program Files\GitHub CLI\gh.exe"
 PY_DIR = str(Path(sys.executable).parent)
@@ -59,6 +61,7 @@ SEVERITY = {"high": 3, "medium": 2, "low": 1}
 
 class Cfg:  # set once from the CLI
     variant = "current"
+    model = "claude-sonnet-5-5"  # pinned: an unpinned CLI default silently drifted across runs
     plugin_dir = ROOT
     claude_md = DEFAULT_CLAUDE_MD
 
@@ -124,8 +127,7 @@ def run_claude(cwd: Path, text: str, plugin: bool, model: str | None = None,
            "--verbose", "--setting-sources", "project", "--strict-mcp-config", "--allowedTools", tools]
     if plugin:
         cmd += ["--plugin-dir", str(Cfg.plugin_dir)]
-    if model:
-        cmd += ["--model", model]
+    cmd += ["--model", model or Cfg.model]
     done = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8",
                           env=py_env(), timeout=1800)
     return [json.loads(line) for line in done.stdout.splitlines() if line.startswith("{")]
@@ -138,6 +140,7 @@ def usage(events: list[dict]) -> dict:
             for c in e.get("message", {}).get("content", []) if c.get("type") == "tool_use"]
     return {
         "valid": not final.get("is_error", True),  # usage-limit / API errors never count
+        "model": ",".join(sorted(final.get("modelUsage", {}))),
         "turns": final.get("num_turns", 0),
         "tokens": sum(u.get(k, 0) for k in ("input_tokens", "output_tokens",
                       "cache_creation_input_tokens", "cache_read_input_tokens")),
@@ -242,7 +245,8 @@ def phase2(slug: str, arm: str, rep: int) -> dict | None:
         return json.loads(out.read_text(encoding="utf-8"))
     src = Cfg.work() / arm / f"{slug}-r{rep}"
     first = Cfg.out() / arm / f"{slug}-r{rep}.json"
-    if not first.exists() or not json.loads(first.read_text(encoding="utf-8")).get("tests_pass"):
+    if not (TASKS_DIR / slug / "FOLLOWUP.md").exists() or not first.exists() or \
+            not json.loads(first.read_text(encoding="utf-8")).get("tests_pass"):
         return None  # only code that solved phase 1 is a fair starting point
     m = module(slug)
     work = Cfg.work() / "followup" / arm / f"{slug}-r{rep}"
@@ -270,6 +274,61 @@ def phase2(slug: str, arm: str, rep: int) -> dict | None:
     print(f"p2 {arm:<9} {slug:<14} r{rep} followup={result['followup_pass']} kept={result['original_still_pass']} "
           f"diff=+{added}/-{deleted} ${result['cost_usd']:.2f}", flush=True)
     return result
+
+
+CHAIN_STEPS = (2, 3)  # step 1 is phase 2 above; later steps build on the previous step's code
+
+
+def step_dir(k: int) -> str:
+    return "followup" if k == 1 else f"followup{k}"
+
+
+def hidden_suites(slug: str, upto: int) -> list[str]:
+    return [f"{module(slug)}_test"] + [f"followup{'' if k == 1 else k}_test" for k in range(1, upto + 1)]
+
+
+def chain_step(slug: str, arm: str, rep: int, k: int) -> dict | None:
+    """Follow-up k on top of step k-1's code. A regression is a hidden suite that passed before
+    this step and fails after it; research shows multi-step chains expose what one step cannot."""
+    out = Cfg.out() / step_dir(k) / arm / f"{slug}-r{rep}.json"
+    if out.exists():
+        return json.loads(out.read_text(encoding="utf-8"))
+    prev = Cfg.work() / step_dir(k - 1) / arm / f"{slug}-r{rep}"
+    if not (TASKS_DIR / slug / f"FOLLOWUP{k}.md").exists() or             not (Cfg.out() / step_dir(k - 1) / arm / f"{slug}-r{rep}.json").exists():
+        return None
+    m = module(slug)
+    before = {s: tests_pass(prev, s) for s in hidden_suites(slug, k - 1)}
+    work = Cfg.work() / step_dir(k) / arm / f"{slug}-r{rep}"
+    fresh_dir(work)
+    shutil.copy(prev / f"{m}.py", work / f"{m}.py")
+    shutil.copy(TASKS_DIR / slug / f"{m}_test.py", work / f"{m}_test.py")
+    for spec in sorted((TASKS_DIR / slug).glob("FOLLOWUP*.md")):
+        if spec.stem == "FOLLOWUP" or int(spec.stem.removeprefix("FOLLOWUP")) <= k:
+            shutil.copy(spec, work / spec.name)
+    git_init(work)
+    sh(work, "git", "add", "-A")
+    sh(work, "git", "commit", "-q", "-m", "start")
+    events = run_claude(work, f"Implement the requirement in FOLLOWUP{k}.md by changing {m}.py. The earlier "
+                              f"requirements in the other FOLLOWUP*.md files must keep working, and the tests in "
+                              f"{m}_test.py must keep passing; do not edit them.", plugin=False)
+    for s in hidden_suites(slug, k):
+        shutil.copy(TASKS_DIR / slug / f"{s}.py", work / f"{s}.py")
+    after = {s: tests_pass(work, s) for s in hidden_suites(slug, k)}
+    result = {"task": slug, "arm": arm, "rep": rep, "step": k, **usage(events),
+              "step_pass": after[hidden_suites(slug, k)[-1]],
+              "regressions": sum(before[s] and not after[s] for s in before),
+              "all_pass": all(after.values()),
+              **{f"after_{key}": v for key, v in code_metrics(work, slug).items()}}
+    save(out, result, events)
+    print(f"p2.{k} {arm:<9} {slug:<14} r{rep} step={result['step_pass']} regressions={result['regressions']} "
+          f"all={result['all_pass']} ${result['cost_usd']:.2f}", flush=True)
+    return result
+
+
+def chain(slug: str, arm: str, rep: int) -> None:
+    for k in CHAIN_STEPS:
+        if chain_step(slug, arm, rep, k) is None:
+            return
 
 
 # --------------------------------------------------------------------------------------
@@ -316,6 +375,28 @@ def mean(rows: list[dict], arm: str | None, key: str) -> float | None:
     return round(statistics.mean(vals), 3) if vals else None
 
 
+def task_diffs(rows: list[dict], key: str) -> list[float]:
+    """Per-task mean difference (standards - none): tasks, not runs, are the unit of analysis
+    because most variance is between tasks (Miller 2024; Bowyer et al. 2025)."""
+    diffs = []
+    for slug in TASKS:
+        a = [float(r[key]) for r in rows if r["task"] == slug and r["arm"] == "none" and r.get(key) is not None]
+        b = [float(r[key]) for r in rows if r["task"] == slug and r["arm"] == "standards" and r.get(key) is not None]
+        if a and b:
+            diffs.append(statistics.mean(b) - statistics.mean(a))
+    return diffs
+
+
+def paired_ci(rows: list[dict], key: str) -> tuple[float, float, float] | None:
+    """Mean per-task difference with a 95% percentile bootstrap CI over tasks."""
+    diffs = task_diffs(rows, key)
+    if len(diffs) < 2:
+        return None
+    rng = random.Random(0)
+    boots = sorted(statistics.mean(rng.choices(diffs, k=len(diffs))) for _ in range(5000))
+    return statistics.mean(diffs), boots[124], boots[4874]
+
+
 def paired_p(rows: list[dict], key: str) -> float | None:
     """Sign-flip permutation test on per-task mean differences (standards - none)."""
     diffs = []
@@ -338,30 +419,46 @@ P1_KEYS = [("tests_pass", "tests pass rate"), ("commits_compliant", "commits com
            ("cc_max", "max cyclomatic complexity"), ("halstead_volume", "halstead volume"),
            ("ruff_violations", "ruff violations"), ("sloc", "source lines"), ("runtime_ms", "test runtime ms"),
            ("turns", "turns"), ("new_tokens", "new tokens"), ("cost_usd", "cost USD")]
+CHAIN_KEYS = [("step_pass", "this step's tests pass ↑"), ("regressions", "earlier suites broken"),
+              ("all_pass", "all suites pass ↑"), ("turns", "turns"), ("new_tokens", "new tokens"),
+              ("cost_usd", "cost USD"), ("after_cognitive_total", "cognitive after")]
 P2_KEYS = [("followup_pass", "follow-up pass rate ↑"), ("original_still_pass", "no regression ↑"),
            ("diff_added", "lines added"), ("diff_deleted", "lines deleted"), ("turns", "turns"),
            ("new_tokens", "new tokens"), ("cost_usd", "cost USD"),
            ("after_mi_structural", "MI structural after ↑"), ("after_cognitive_total", "cognitive after")]
 
 
+def models_used(rows: list[dict]) -> dict:
+    return {arm: sorted({r.get("model", "?") for r in rows if r["arm"] == arm}) for arm in ARMS}
+
+
 def table(title: str, rows: list[dict], keys: list[tuple[str, str]]) -> dict:
+    used = models_used(rows)
+    if any(len(m) != 1 for m in used.values()) or len({m[0] for m in used.values() if m}) > 1:
+        print(f"\n!! MIXED MODELS {used}: arm differences below are confounded by model, not valid A/B")
     print(f"\n{title} (n = {sum(r['arm'] == 'none' for r in rows)} / {sum(r['arm'] == 'standards' for r in rows)})")
-    print(f"  {'metric':<28}{'none':>11}{'standards':>11}{'p':>8}")
+    print(f"  {'metric':<28}{'none':>11}{'standards':>11}{'p':>8}   Δ per task [95% CI]")
     summary = {}
     for key, label in keys:
         a, b, p = mean(rows, "none", key), mean(rows, "standards", key), paired_p(rows, key)
-        summary[key] = {"none": a, "standards": b, "p": p}
+        ci = paired_ci(rows, key)
+        summary[key] = {"none": a, "standards": b, "p": p, "ci": ci}
         fmt = lambda v: "—" if v is None else f"{v:,.2f}"
-        print(f"  {label:<28}{fmt(a):>11}{fmt(b):>11}{'' if p is None else f'{p:.3f}':>8}")
+        ci_text = "" if ci is None else f"   {ci[0]:+,.2f} [{ci[1]:+,.2f}, {ci[2]:+,.2f}]"
+        print(f"  {label:<28}{fmt(a):>11}{fmt(b):>11}{'' if p is None else f'{p:.3f}':>8}{ci_text}")
     return summary
 
 
 def report() -> None:
     p1, p2, judged = load("*/*-r*.json"), load("followup/*/*.json"), load("judge/*.json")
     p1 = [r for r in p1 if r.get("arm") in ARMS]
-    summary = {"variant": Cfg.variant, "phase1": table("PHASE 1 — solve", p1, P1_KEYS)}
+    summary = {"variant": Cfg.variant, "models": models_used(p1), "phase1": table("PHASE 1 — solve", p1, P1_KEYS)}
     if p2:
         summary["phase2"] = table("PHASE 2 — change cost (neutral agent)", p2, P2_KEYS)
+    for k in CHAIN_STEPS:
+        rows = load(f"{step_dir(k)}/*/*.json")
+        if rows:
+            summary[f"chain{k}"] = table(f"CHAIN STEP {k} (neutral agent, builds on step {k - 1})", rows, CHAIN_KEYS)
     if judged:
         wins = {w: sum(j["winner"] == w for j in judged) for w in ("standards", "none", "tie")}
         print(f"\nBLIND JUDGE ({JUDGE_MODEL}, order-consistent only): {wins} of {len(judged)}; "
@@ -374,8 +471,9 @@ def report() -> None:
 def main(argv: list[str]) -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["fetch", "run", "followup", "judge", "all", "report"])
+    parser.add_argument("command", choices=["fetch", "run", "followup", "chain", "judge", "all", "report"])
     parser.add_argument("--variant", default="current")
+    parser.add_argument("--model", default=Cfg.model, help="agent model, pinned for every agent run")
     parser.add_argument("--reps", type=int, default=2)
     parser.add_argument("--tasks", default=",".join(TASKS))
     parser.add_argument("--arms", default=",".join(ARMS))
@@ -383,19 +481,20 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--plugin-dir", default=str(ROOT), help="skill version under test (e.g. a worktree)")
     parser.add_argument("--claude-md", default=None, help="file replacing the always-loaded CLAUDE.md block")
     cfg = parser.parse_args(argv)
-    Cfg.variant, Cfg.plugin_dir = cfg.variant, Path(cfg.plugin_dir).resolve()
+    Cfg.variant, Cfg.plugin_dir, Cfg.model = cfg.variant, Path(cfg.plugin_dir).resolve(), cfg.model
     if cfg.claude_md:
         Cfg.claude_md = Path(cfg.claude_md).read_text(encoding="utf-8")
     tasks, arms, reps = cfg.tasks.split(","), cfg.arms.split(","), range(1, cfg.reps + 1)
     jobs = {
         "run": [(phase1, (t, a, r)) for r in reps for t in tasks for a in arms],
         "followup": [(phase2, (t, a, r)) for r in reps for t in tasks for a in arms],
+        "chain": [(chain, (t, a, r)) for r in reps for t in tasks for a in arms],
         "judge": [(judge, (t, r)) for r in reps for t in tasks],
     }
     if cfg.command == "fetch":
         fetch()
         return 0
-    for stage in (["run", "followup", "judge"] if cfg.command == "all" else
+    for stage in (["run", "followup", "chain", "judge"] if cfg.command == "all" else
                   [cfg.command] if cfg.command in jobs else []):
         with ThreadPoolExecutor(cfg.parallel) as pool:
             list(pool.map(lambda job: job[0](*job[1]), jobs[stage]))
