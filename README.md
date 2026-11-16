@@ -82,7 +82,48 @@ pip install skillevaluator && skillevaluator quality-check skills/verify   # NVI
 
 ### Results
 
-_Filled in by the evaluation phase._
+Measured 2026-11-15 on Claude Opus 5.5, runs isolated from operator hooks and plugins. Raw data:
+`results/` (git-ignored; reproduce with the commands above and `python tools/bench.py run`).
+
+**1. Task benchmark — real agent, real repo, skill environment vs none** (`tools/bench.py`;
+8 Exercism tasks incl. 3 refactoring exercises, 2 runs per arm, n = 16 per arm, all runs valid)
+
+| Metric | No standards | Standards | Effect |
+|---|---|---|---|
+| Tests pass | 100% | 100% | no regression |
+| Commits standards-compliant | 19% | **100%** | +81 pts |
+| Wrote directly to `main`/`dev` | 100% | **0%** | eliminated |
+| Lint weighted severity (mean) | 10.4 | **7.1** | −32%; 7/8 tasks better, sign-flip p = 0.039 |
+| Lint-clean solutions | 6% | 25% | ×4 |
+| Turns (mean) | 10.0 | 8.6 | −14% |
+| Cost per task (mean) | $0.15 | $0.15 | ±0 |
+
+**2. Code-quality eval — same prompts, skill read vs not** (`tools/skill_eval.py`; 6 cases × 3
+runs per arm)
+
+| Metric | No skill | `clean-code` | Effect |
+|---|---|---|---|
+| Weighted lint severity | 37.0 ± 1.4 | **19.0 ± 4.3** | −49% |
+| Lint-clean cases | 5/18 | 7/18 | +2 |
+| Cost per 6 cases | $0.32 | $0.95 | ×3 (reading the skill costs 2–3 extra turns) |
+
+**3. Static skill quality** (NVIDIA SkillEvaluator 0.9.0 `quality-check`, gated in CI)
+
+| Skill | Score |
+|---|---|
+| `clean-code` v1.1 (before this redesign) | 77.0 C |
+| `clean-code` v2 | 89.2 B |
+| `verify` / `ship` / `setup-standards` | 93.8 A / 91.2 A / 93.8 A |
+
+**Verdict.** The environment works where it is enforced: compliance went from 19% to 100% and
+protected-branch writes from 100% to 0% at **no extra cost per task**, with no loss in test pass
+rate, and solutions were measurably cleaner. Reading the `clean-code` skill halves lint severity
+but triples cost, so it pays for itself on code that will be maintained, not on throwaway work.
+
+**Limits.** Agents never auto-invoked a skill in headless runs (0/32); the benchmark effect comes
+from the always-loaded `CLAUDE.md` block plus the hooks, not from skill bodies. n is small (2 runs
+per task); tasks are single-file Python; the lint scorer is heuristic. SWE-bench-scale and
+multi-language runs need Docker and other toolchains and were not run.
 
 ## Bibliography
 
