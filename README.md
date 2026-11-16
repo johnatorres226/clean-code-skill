@@ -1,137 +1,94 @@
-# clean-code-skill
+# clean-code-standards
 
-A Claude skill for clean code standards across **C, C++, Java, and Python** — packaged as a
-plugin, with tooling to curate and evaluate the skill itself.
+The **environment contract** for production-grade agentic development. Orchestration frameworks
+like [pstack](https://github.com/cursor/plugins/tree/main/pstack) and
+[mattpocock-skills](https://github.com/mattpocock/skills) define *how agents run the work*. This
+plugin defines *what acceptable work is* — up front, as config, enforced by tools:
 
-Covers naming, function design, comments, formatting, error handling, class and module design,
-test-driven development, refactoring, and a 66-entry smell catalog. Ships a working linter, a TDD
-scaffolder, and formatter/linter configs for all four languages.
+- **How to code** — language-agnostic clean-code standards (naming, functions, errors, design, tests).
+- **Quality gates** — format, lint, typecheck, test commands every change must pass.
+- **Git discipline** — atomic Conventional Commits with size limits, protected `main`/`dev`,
+  feature branches by type, PR size limits, post-PR review, merge and release rules.
+- **Definition of done** — gates green plus evidence the behavior works, reported honestly.
 
-## Install
+It is not a comprehensive guide. Rules a tool can check are enforced by a tool; prose covers only
+judgment calls. That keeps the token cost low and the rules impossible to forget.
 
-**As a plugin** (gives you the skill plus the `/clean-code-*` commands):
+## Install and adopt
 
 ```bash
-git clone https://github.com/johnatorres226/clean-code-skill
-# then point your plugin config at the cloned directory
+claude plugin install <path-or-url-to-this-repo>   # or point your plugin config at a clone
 ```
 
-**As a bare skill** — copy `skills/clean-code/` into your skills directory, or install the
-packaged `clean-code.skill` file from the releases.
+Then, in the repository you want governed: `/setup-standards`. It detects the stack, writes
+`standards.toml` with the repo's own gate commands, installs git hooks, a CI workflow, a PR
+template, branch protection, and a short always-loaded `CLAUDE.md` block.
 
-## What's in it
+## Skills
 
-```
-skills/clean-code/
-├── SKILL.md              always loaded (~3,300 tokens) — triage protocol + core procedures
-├── references/           10 language-agnostic files, ~22,000 tokens, loaded on demand
-└── .skill-audit.json     declared exceptions to the audit defaults, each with a justification
-
-tools/
-├── skill_audit.py        context-budget and structural audit
-├── skill_eval.py         does the skill actually change the generated code?
-└── evals/                fixed eval cases + lint.py, the heuristic scorer
-```
-
-## Design: progressive disclosure, enforced
-
-The failure mode for a large skill is loading all of it every time. This one is built in three
-tiers and the boundaries are checked mechanically.
-
-| Tier | Cost | When |
+| Skill | Use when | Cost when triggered |
 |---|---|---|
-| Frontmatter | ~110 tokens | always in context |
-| `SKILL.md` | ~3,600 tokens | when the skill triggers |
-| References | ~37,000 tokens | only what the task needs |
-| Scripts & assets | 0 | executed or copied, never read into context |
+| `setup-standards` | adopting the standards in a repo | ~1.2k tokens |
+| `clean-code` | writing, reviewing, refactoring code | `SKILL.md` ~3.3k; references on demand |
+| `verify` | before claiming done, committing behavior, opening a PR | ~600 tokens |
+| `ship` | branching, committing, PRs, review, merge, release | ~1.2k tokens |
 
-`SKILL.md` opens with a four-step triage protocol: run a script before reading anything, load one
-reference by default (more when the task genuinely spans areas), and **never read the smell
-catalog whole** — it is a lookup table with an index and grep-by-ID access, so a targeted lookup
-costs ~60 tokens instead of 5,145.
+The only always-loaded cost is the ~120-token `## Standards` block in the governed repo's
+`CLAUDE.md`.
 
-Measured per-task cost:
+## Enforcement
 
-| Task | Loaded | vs. everything |
-|---|---|---|
-| Name a variable | 3,636 | 40,814 |
-| Write a Python function | 9,862 | 40,814 |
-| Refactor legacy C, get it under test | 11,587 | 40,814 |
+`standards.toml` is the single source of truth. One stdlib Python file
+(`.githooks/standards.py`) reads it everywhere:
 
-Two design decisions worth calling out because they cut against the obvious move:
+| Rule | Enforced by |
+|---|---|
+| No commits to `main`/`dev` | `pre-commit` hook, branch protection |
+| Conventional Commit subject ≤ 72 chars | `commit-msg` hook, CI range check |
+| ≤ 300 added lines / 10 files per commit | `pre-commit` hook, CI range check |
+| ≤ 400 added lines / 25 files per PR | CI range check (`size-exempt` label overrides, visibly) |
+| Branch names `<type>/<slug>`, no pushes to protected | `pre-push` hook, branch protection |
+| Gates (format, lint, typecheck, test) pass | `pre-commit` (fast), `pre-push` + CI (all) |
+| Agents never bypass hooks or push to protected | Claude Code `PreToolUse` guard hook |
+| Review before merge | branch protection (required checks and reviews), `ship` skill |
 
-- **The naming, TDD, and refactoring summaries in `SKILL.md` were kept, not stubbed.** Stubbing
-  them would have saved ~630 tokens but forced every small question either into a 2,000-token
-  reference load or into an answer with no guidance at all. Each summary instead ends with an
-  **"Open the reference when:"** line naming exactly what it does not cover. The defect was never
-  the duplication — it was the absent handoff signal.
-- **References are language-agnostic.** Examples are neutral pseudocode, one per rule. Language
-  idioms are enforced by each repo's linter and formatter config rather than described in prose,
-  which removed four per-language references (~10k tokens).
+Deletions never count toward size limits, so cleanup is never blocked. The guard hook is a no-op
+in repositories without `standards.toml`.
 
-## Curating the skill
+## Working with pstack and mattpocock-skills
 
-```bash
-python3 tools/skill_audit.py skills/clean-code
-```
+This plugin does not orchestrate; it is the floor every orchestrator's output must clear.
 
-Reports the context budget per tier, the largest references, and structural problems: broken
-links, orphaned reference files, files missing from the routing table, budget violations, and
-`SKILL.md` sections that shadow a reference without an escalation trigger.
+| Their step | Gate it hits here |
+|---|---|
+| pstack `poteto-mode` Feature / Bug fix, mattpocock `implement` | `clean-code` while writing; `verify` before done |
+| mattpocock `tdd`, pstack `principle-prove-it-works` | `verify` evidence table (red-then-green for fixes) |
+| pstack Opening a PR (small ordered commits) | `ship` commit rules; hooks reject oversize or malformed commits |
+| pstack Babysit, bugbot triage | CI `standards` check; `ship` §4 review findings |
+| pstack Shipping (land the verified stack) | branch protection + `ship` §5 merge, §6 release |
+| mattpocock `to-tickets`, `triage` | one ticket → one `<type>/<slug>` branch → one PR to `dev` |
+| `/code-review`, pstack `interrogate` | satisfies the `ship` §4 review pass |
 
-Deliberate exceptions go in `skills/clean-code/.skill-audit.json` **with a written justification**
-rather than by loosening a threshold. A clean audit means "no undeclared problems", not "no
-tradeoffs" — and the justifications are reviewable in the diff.
-
-```bash
-python3 tools/skill_audit.py skills/clean-code --fail-on-violation   # CI gate
-```
-
-## Evaluating the skill
-
-Prose quality is not evidence. Because `tools/evals/lint.py` scores smells by catalog ID, generated code can be scored
-objectively against the skill's own standard:
+## Evaluation
 
 ```bash
-python3 tools/skill_eval.py run   --out results/baseline --no-skill
-python3 tools/skill_eval.py run   --skill skills/clean-code --out results/with-skill
-python3 tools/skill_eval.py score results/baseline
-python3 tools/skill_eval.py score results/with-skill
-python3 tools/skill_eval.py compare results/baseline results/with-skill
+python tools/skill_audit.py skills/clean-code          # context budget and structure
+python tools/skill_eval.py run --no-skill --out results/base
+python tools/skill_eval.py run --skill skills/clean-code --out results/skill
+python tools/skill_eval.py compare results/base results/skill
+python tests/test_standards.py                          # enforcement self-check
 ```
 
-The six eval prompts deliberately never say "write clean code" — a skill that only works when
-asked is not working. Each targets specific catalog IDs (flag arguments, magic numbers, raw
-`new`/`delete`, unbounded string functions, mutable defaults).
+### Results
 
-Three measurement guarantees, because each of these would otherwise produce a flattering lie:
-
-- A case that generated **no output** is marked `MISSING` and excluded from all aggregates —
-  never scored as clean.
-- **Only cases present in both runs** are compared.
-- **Per-case regressions** are reported separately and set exit code 1, since an aggregate
-  improvement can hide a case that got worse.
-
-## Honest limitations
-
-- **The eval linter's C-family parser is regex-and-brace based.** Heavily templated C++ or unusual
-  macro layouts can be missed. Python analysis uses the `ast` module and is exact.
-- **Token counts are estimates** (words × 4/3). Directionally reliable, not exact.
-- **The eval measures lint-cleanliness, not correctness or design quality.** Code can lint clean
-  and still be badly designed. It catches regressions on the mechanical dimension; it does not
-  replace reading the output.
-- **`skill_audit.py`'s duplication check compares exact paragraphs**, so it will not catch
-  reworded near-duplicates.
-- **No baseline eval has been run yet** — the harness is verified against known-dirty and
-  known-clean fixtures, but the with-skill-versus-without comparison has not been executed.
+_Filled in by the evaluation phase._
 
 ## Bibliography
 
-Follows the tradition of Robert C. Martin's *Clean Code* (2008) — the source of the catalog's
-ID scheme — along with Fowler's *Refactoring* (2018), Beck's *Test-Driven Development* (2002),
-Feathers' *Working Effectively with Legacy Code* (2004), Hunt & Thomas' *The Pragmatic
-Programmer* (1999), Meyers' *Effective Modern C++* (2014), Bloch's *Effective Java* (2018),
-PEP 8/20, and the ISO C++ Core Guidelines. All prose is original to this skill.
+Robert C. Martin, *Clean Code* (2008) — source of the smell catalog's ID scheme; Fowler,
+*Refactoring* (2018); Beck, *Test-Driven Development* (2002); Feathers, *Working Effectively with
+Legacy Code* (2004); Hunt & Thomas, *The Pragmatic Programmer* (1999); the Conventional Commits
+specification. All prose is original to this project.
 
 ## License
 
