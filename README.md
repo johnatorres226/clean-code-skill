@@ -71,59 +71,65 @@ This plugin does not orchestrate; it is the floor every orchestrator's output mu
 
 ## Evaluation
 
+Three independent measurements, each A/B against a no-standards control, plus a regression gate.
+
 ```bash
-python tools/skill_audit.py skills/clean-code          # context budget and structure
-python tools/skill_eval.py run --no-skill --out results/base
-python tools/skill_eval.py run --skill skills/clean-code --out results/skill
-python tools/skill_eval.py compare results/base results/skill
-python tests/test_standards.py                          # enforcement self-check
-pip install skillevaluator && skillevaluator quality-check skills/verify   # NVIDIA static tier
+pip install -r tools/evals/requirements.txt                     # eval-only deps (radon, ruff, ...)
+python tools/bench.py all --variant NAME [--claude-md FILE]       # agent benchmark, resumable
+python tools/skill_eval.py run --skill skills/clean-code --out results/lint/x   # code-quality eval
+python tools/regress.py static          # every PR (CI): token cost, SkillEvaluator score, self-checks
+python tools/regress.py bench NAME      # before release: agent tier vs tools/evals/baseline.json
 ```
 
-### Results
+**Methods.** Agent benchmark: 8 Exercism tasks (3 refactoring), 2 runs each, n = 16 per arm,
+Claude Opus 5.5 headless, isolated from operator hooks and plugins. Code metrics are established
+ones: McCabe cyclomatic complexity (1976), Cognitive Complexity (Campbell 2018; validated against
+human understandability, Muñoz Barón et al., ESEM 2020), Halstead volume (1977), Maintainability
+Index (Oman & Hagemeister 1992) reported **structurally**, because its comment term rewards
+comment density (Heitlager et al. 2007). Phase 2 measures change cost: a neutral agent, identical
+in both arms, extends each arm's code against hidden tests. The blind judge (Claude Sonnet 5.5)
+sees each pair in both orders and counts only order-consistent verdicts (Zheng et al. 2023).
+p-values: sign-flip permutation test over per-task differences.
 
-Measured 2026-11-15 on Claude Opus 5.5, runs isolated from operator hooks and plugins. Raw data:
-`results/` (git-ignored; reproduce with the commands above and `python tools/bench.py run`).
+### Results (shipped version, v2.1)
 
-**1. Task benchmark — real agent, real repo, skill environment vs none** (`tools/bench.py`;
-8 Exercism tasks incl. 3 refactoring exercises, 2 runs per arm, n = 16 per arm, all runs valid)
-
-| Metric | No standards | Standards | Effect |
+| Agent benchmark | No standards | Standards | p |
 |---|---|---|---|
-| Tests pass | 100% | 100% | no regression |
-| Commits standards-compliant | 19% | **100%** | +81 pts |
-| Wrote directly to `main`/`dev` | 100% | **0%** | eliminated |
-| Lint weighted severity (mean) | 10.4 | **7.1** | −32%; 7/8 tasks better, sign-flip p = 0.039 |
-| Lint-clean solutions | 6% | 25% | ×4 |
-| Turns (mean) | 10.0 | 8.6 | −14% |
-| Cost per task (mean) | $0.15 | $0.15 | ±0 |
+| Tests pass | 100% | 100% | — |
+| Commits standards-compliant | 19% | **100%** | 0.009 |
+| Wrote directly to `main`/`dev` | 100% | **0%** | 0.009 |
+| Lint severity | 10.4 | **2.6 (−75%)** | 0.017 |
+| Cognitive complexity (total) | 15.8 | **10.1 (−36%)** | 0.023 |
+| Max cyclomatic complexity | 9.8 | **4.9 (−50%)** | 0.023 |
+| Maintainability Index, structural | 48.5 | 48.3 | 0.80 |
+| Cost per task | $0.15 | **$0.09 (−40%)** | 0.048 |
+| **Change cost:** tokens to apply a follow-up | 10.2k | **9.6k (−5%)** | 0.023 |
+| **Change cost:** cognitive complexity after it | 19.8 | **12.8 (−36%)** | 0.039 |
+| **Blind judge:** preferred | 1 | **12** (3 ties) | ≈ 0.003 (sign test) |
 
-**2. Code-quality eval — same prompts, skill read vs not** (`tools/skill_eval.py`; 6 cases × 3
-runs per arm)
-
-| Metric | No skill | `clean-code` | Effect |
+| Code-quality eval (`clean-code` read; 6 cases × 3 runs) | No skill | v2.0 | **v2.1** |
 |---|---|---|---|
-| Weighted lint severity | 37.0 ± 1.4 | **19.0 ± 4.3** | −49% |
-| Lint-clean cases | 5/18 | 7/18 | +2 |
-| Cost per 6 cases | $0.32 | $0.95 | ×3 (reading the skill costs 2–3 extra turns) |
+| Weighted lint severity | 37.0 | 19.0 | **16.0** |
+| Lint-clean cases | 5/18 | 7/18 | **9/18** |
+| Cost per 6 cases | $0.32 | $0.95 | **$0.31** |
 
-**3. Static skill quality** (NVIDIA SkillEvaluator 0.9.0 `quality-check`, gated in CI)
+NVIDIA SkillEvaluator 0.9.0 static quality: `clean-code` 87.5 (v1.1 was 77.0), `verify` 93.8,
+`ship` 91.2, `setup-standards` 93.8.
 
-| Skill | Score |
-|---|---|
-| `clean-code` v1.1 (before this redesign) | 77.0 C |
-| `clean-code` v2 | 89.2 B |
-| `verify` / `ship` / `setup-standards` | 93.8 A / 91.2 A / 93.8 A |
+**Verdict.** The standards make agent output compliant, measurably simpler, preferred by a blind
+reviewer, and cheaper to change — at **lower** cost per task than no standards. The effect comes
+from the always-loaded `CLAUDE.md` block and the hooks: headless agents invoked a skill in 1 of 16
+runs, so the block carries the highest-value rules and the skills hold the depth.
 
-**Verdict.** The environment works where it is enforced: compliance went from 19% to 100% and
-protected-branch writes from 100% to 0% at **no extra cost per task**, with no loss in test pass
-rate, and solutions were measurably cleaner. Reading the `clean-code` skill halves lint severity
-but triples cost, so it pays for itself on code that will be maintained, not on throwaway work.
+**Rejected candidate (v2.2).** Adding "docstrings on public APIs" to the block barely moved the
+comment ratio (0.01 → 0.02), lowered the judge's preference (12–1 → 9–4), raised change cost, and
+failed the regression gate on ruff violations. v2.1 stays; the variant file is kept in
+`tools/evals/variants/` so the result is reproducible.
 
-**Limits.** Agents never auto-invoked a skill in headless runs (0/32); the benchmark effect comes
-from the always-loaded `CLAUDE.md` block plus the hooks, not from skill bodies. n is small (2 runs
-per task); tasks are single-file Python; the lint scorer is heuristic. SWE-bench-scale and
-multi-language runs need Docker and other toolchains and were not run.
+**Limits.** n = 2 runs per task; single-file Python tasks; follow-ups too easy to separate pass
+rates (both 100%); the v2.1 change also trimmed `SKILL.md`, so the two are not separated;
+v2.1 code carries almost no comments (comment ratio 0.12 → 0.01). Multi-file and SWE-bench-scale
+runs need Docker and were not run.
 
 ## Bibliography
 
