@@ -10,11 +10,11 @@ merge       = "rebase"
 [commits]
 types             = ["feat", "fix", "refactor", "perf", "test", "docs", "chore", "ci", "build", "revert"]
 max_subject       = 72
-max_changed_lines = 300
+max_added_lines   = 300
 max_files         = 10
 
 [pr]
-max_changed_lines = 400
+max_added_lines   = 400
 max_files         = 25
 reviews_required  = 0                  # solo repo; the standards status check is still required
 
