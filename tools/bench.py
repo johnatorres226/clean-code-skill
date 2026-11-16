@@ -152,7 +152,7 @@ def usage(events: list[dict]) -> dict:
         "duration_s": round((final.get("duration_ms") or 0) / 1000),
         "tool_calls": len(uses),
         "skills_invoked": [c.get("input", {}).get("skill") for c in uses if c.get("name") == "Skill"],
-        "result_text": str(final.get("result", ""))[:300],
+        "result_text": str(final.get("result", "")),  # untruncated: the judge parses JSON from it
     }
 
 
