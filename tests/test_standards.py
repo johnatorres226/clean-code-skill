@@ -24,10 +24,10 @@ def test_commit_messages():
 
 
 def test_sizes_skip_excluded_and_binary():
-    numstat = "10\t5\tsrc/a.py\n900\t0\tpackage-lock.json\n-\t-\tlogo.png"
-    assert s.changed_lines(numstat, CFG["size"]["exclude"]) == (15, 1)
+    numstat = "10\t5\tsrc/a.py\n0\t700\tsrc/old.py\n900\t0\tpackage-lock.json\n-\t-\tlogo.png"
+    assert s.added_lines(numstat, CFG["size"]["exclude"]) == (10, 1)
     big = "\n".join(f"40\t0\tsrc/f{i}.py" for i in range(8))
-    assert "320 changed lines" in s.size_problem(big, CFG)
+    assert "320 added lines" in s.size_problem(big, CFG)
     assert s.size_problem(big, CFG, "pr") is None
 
 

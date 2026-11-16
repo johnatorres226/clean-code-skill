@@ -35,7 +35,10 @@ git push -u origin HEAD
 gh pr create --base dev --fill-first   # then complete the template: Why, What, Evidence
 ```
 
-Over the PR size limit → split into stacked PRs, each independently reviewable and green.
+Over the PR size limit → split into stacked PRs, each independently reviewable and green. The
+only exception is work that cannot be split meaningfully (bootstrap, vendored code, a mechanical
+bulk rename): label the PR `size-exempt` and say why in its description. Messages are still
+checked; deletions never count toward limits.
 
 ## 4. Review pass — after the PR exists, before merge
 

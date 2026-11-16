@@ -16,6 +16,6 @@ jobs:
       # Install the repo's toolchain here if the gates need it (e.g. pip install -e .[dev]).
       - name: Commits and PR size
         if: github.event_name == 'pull_request'
-        run: python3 .githooks/standards.py range origin/${{ github.base_ref }}
+        run: python3 .githooks/standards.py range origin/${{ github.base_ref }} ${{ contains(github.event.pull_request.labels.*.name, 'size-exempt') && '--no-size' || '' }}
       - name: Gates
         run: python3 .githooks/standards.py check
