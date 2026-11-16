@@ -1,6 +1,10 @@
 ---
 name: ship
 description: Production git workflow for repos with standards.toml — branch naming, atomic Conventional Commits within size limits, opening a PR, the post-PR review pass, addressing findings, and merging to dev and releasing to main. Use when committing, splitting a change into commits, opening or updating a PR, reviewing a PR, merging, releasing, or when asked to "commit", "ship", "open a PR", "review this PR", "merge", or "release".
+version: 2.0.0
+metadata:
+  author: johnatorres226
+  tags: [git, conventional-commits, pull-requests, code-review, release]
 ---
 
 # Ship

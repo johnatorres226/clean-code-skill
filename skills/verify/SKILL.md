@@ -1,6 +1,10 @@
 ---
 name: verify
 description: Definition of done for any code change in a repo with standards.toml — run the quality gates, prove the behavior with evidence, and report pass, fail, or inconclusive honestly. Use before claiming a task is done, before every commit that changes behavior, before opening or updating a PR, and whenever asked "does it work", "verify", "check it", or "is this ready".
+version: 2.0.0
+metadata:
+  author: johnatorres226
+  tags: [verification, quality-gates, testing, definition-of-done]
 ---
 
 # Verify

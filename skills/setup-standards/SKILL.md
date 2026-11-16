@@ -1,6 +1,10 @@
 ---
 name: setup-standards
 description: Install the clean-code-standards environment into a repository — standards.toml (branches, commit and PR size limits, quality gates), git hooks, CI workflow, PR template, branch protection, and the always-loaded CLAUDE.md block. Use for /setup-standards, "set up standards", "adopt clean-code-standards", "add commit rules / branch protection / quality gates", or when a repo has no standards.toml and the user wants production-grade rules enforced.
+version: 2.0.0
+metadata:
+  author: johnatorres226
+  tags: [standards, git-hooks, ci, branch-protection, setup]
 ---
 
 # Setup standards
