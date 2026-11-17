@@ -18,6 +18,11 @@ max_added_lines   = 400
 max_files         = 25
 reviews_required  = 0                  # solo repo; the standards status check is still required
 
+[roles]
+senior       = ["@johnatorres226"]
+guarded      = ["standards.toml", "skills/setup-standards/templates/", "hooks/", ".github/", ".claude/"]
+admin_bypass = true                    # solo repo: the owner cannot approve their own PRs
+
 [size]
 exclude = ["*.lock", "*-lock.json", "results/*", "tools/evals/benchmarks/*"]
 
