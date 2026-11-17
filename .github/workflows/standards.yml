@@ -1,7 +1,7 @@
 name: standards
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main, dev]
 jobs:
@@ -31,8 +31,9 @@ jobs:
       - name: Commits, PR size, branch name
         if: github.event_name == 'pull_request'
         env:
-          HEAD_REF: ${{ github.head_ref }}  # via env, never inline: branch names are untrusted input
-        run: python3 skills/setup-standards/templates/.githooks/standards.py range origin/${{ github.base_ref }} --branch "$HEAD_REF" ${{ steps.exempt.outputs.flag }}
+          HEAD_REF: ${{ github.head_ref }}  # via env, never inline: branch names and bodies are untrusted
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md" && python3 skills/setup-standards/templates/.githooks/standards.py range origin/${{ github.base_ref }} --branch "$HEAD_REF" --body-file "$RUNNER_TEMP/pr-body.md" ${{ steps.exempt.outputs.flag }}
       - name: Gates
         run: python3 skills/setup-standards/templates/.githooks/standards.py check
       - name: Skill regression gate (token cost, SkillEvaluator quality, self-checks)
