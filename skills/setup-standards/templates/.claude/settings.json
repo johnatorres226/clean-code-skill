@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(**/standards.toml)",
+      "Edit(**/.githooks/**)",
+      "Edit(**/.github/**)",
+      "Edit(**/.claude/**)"
+    ],
+    "disableBypassPermissionsMode": "disable"
+  }
+}
