@@ -61,6 +61,24 @@ def test_guard():
     assert s.guard_problem('bash -c "git commit -m \'docs: explain --no-verify policy\'"', CFG) is None
 
 
+def test_codeowners_and_ruleset():
+    owners = s.codeowners(CFG)
+    assert "/standards.toml @org/seniors" in owners  # enforcement surface -> senior tier
+    assert "/src/billing/ @org/billing @org/seniors" in owners  # area -> mid tier, seniors too
+    dev = {r["type"]: r.get("parameters", {}) for r in s.ruleset("dev", CFG)["rules"]}
+    main = {r["type"]: r.get("parameters", {}) for r in s.ruleset("main", CFG)["rules"]}
+    assert "required_linear_history" in dev and "required_linear_history" not in main
+    assert dev["pull_request"]["allowed_merge_methods"] == ["rebase"]
+    assert main["pull_request"]["allowed_merge_methods"] == ["merge"]  # release keeps a merge commit
+    pr = dev["pull_request"]
+    assert pr["require_code_owner_review"] and pr["dismiss_stale_reviews_on_push"]
+    assert pr["require_last_push_approval"] and pr["required_review_thread_resolution"]
+    assert dev["required_status_checks"]["strict_required_status_checks_policy"]
+    assert s.ruleset("dev", CFG)["bypass_actors"] == []  # template default: nobody bypasses
+    solo = {**CFG, "roles": {**CFG["roles"], "admin_bypass": True}}
+    assert s.ruleset("dev", solo)["bypass_actors"][0]["bypass_mode"] == "pull_request"
+
+
 def test_hooks_end_to_end():
     """Real git repo: protected-branch commit and bad message are blocked; good flow passes."""
     with tempfile.TemporaryDirectory() as tmp:
