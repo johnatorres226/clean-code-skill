@@ -248,3 +248,76 @@ https://github.blog/changelog/2023-10-11-requiring-workflows-with-repository-rul
 **Apply here.** See the layer map table below. The column "Today" marks what is enforced only
 locally or not at all.
 
+## Proposed tier matrix
+
+GitHub role in brackets. "Owner paths" = CODEOWNERS for `standards.toml`, `.githooks/`,
+`.github/` (workflows, CODEOWNERS), `hooks/`, `.claude/`, infra and auth code.
+
+| Capability | Associate [Write] | Mid [Write] | Senior [Maintain] | AI agent [GitHub App / fine-grained PAT] |
+|---|---|---|---|---|
+| Push feature branches `<type>/<slug>` | yes | yes | yes | only its own prefix (e.g. `agent/` or `<type>/`), never protected |
+| Push to `main`/`dev` | no (ruleset) | no | no (bypass list empty) | no |
+| Open PR / enable auto-merge | yes / yes | yes / yes | yes / yes | yes / no |
+| Approval counts toward merge | non-owner paths only | yes, incl. app-area owner paths | yes, all owner paths | never; author can't approve own PR |
+| Second approval required on their PRs | yes, if touching owner paths | no | no | yes, +1 human (Copilot-style rule) |
+| Edit CI, hooks, `standards.toml`, CODEOWNERS | via PR, needs senior owner | via PR, needs senior owner | owner | denied in harness; via PR needs senior |
+| Repo Actions secrets | no: secrets live in protected environments | no | environment reviewer | no access; no secrets in agent env |
+| Approve `release` environment | no | no | yes (prevent self-review) | no |
+| Apply `size-exempt` | no | yes, not on own PR | yes, not on own PR | no |
+| Ruleset bypass | none | none | none; admin break-glass "for PRs only" | none |
+
+Progressive trust: move a person between tiers by adding them to the owner team, not by changing
+their GitHub role. Associates get Write, not Triage, because they must push branches.
+
+## Layer map
+
+S = server (ruleset / required CI / environment), H = local git hook (bypassable), A = agent
+harness (permission rule or PreToolUse hook), M = CLAUDE.md guidance.
+
+| Control | Strongest layer that can enforce it | Today | Move |
+|---|---|---|---|
+| No direct commits or pushes to `main`/`dev` | S: ruleset restrict updates + require PR | S (classic) + H + A | ruleset, empty bypass |
+| No force push / deletion of protected | S | S (classic) | ruleset |
+| Conventional Commit subject | S: CI `range` (metadata rule on Enterprise) | S + H | — |
+| Commit and PR added-line limits | S: CI `range` | S + H | — |
+| `size-exempt` override not self-applied | S: CI checks label actor ≠ PR author | **none** (any writer labels) | CI |
+| Branch name `<type>/<slug>` | S: CI on `head_ref` (metadata rule on Enterprise) | **H only** | CI |
+| Gates (format, lint, type, test) | S: required strict check | S + H | pin check to GitHub Actions app |
+| CI config can't be weakened by the PR itself | S: CODEOWNERS + code-owner review, or org-required workflow | **none** | CODEOWNERS |
+| Required approvals, stale dismissal, last-push approval, conversation resolution | S | approvals count only | ruleset |
+| Linear history (`merge = "rebase"`) | S: require linear history + allowed merge method | **M only** | ruleset |
+| No `--no-verify` / hooksPath tricks | cannot be enforced locally; S makes it moot | A (partial) | harden A; rely on S |
+| Agent can't edit standards files or settings | A: deny `Edit(...)` (managed) + S: CODEOWNERS | **none** | settings template |
+| Agent can't change protection or secrets | S: token without Administration permission | **none** (dev's `gh` token) | App / fine-grained token |
+| Release approval by another person | S: environment required reviewers + prevent self-review | **none** | `release` environment |
+| Signed commits (optional) | S: ruleset rule | none | opt-in key |
+
+## Ranked shortlist: build first
+
+1. **Ruleset instead of classic protection** (`setup-standards` §4). Require a PR; require the
+   strict `standards` check from GitHub Actions; dismiss stale approvals; require last-push
+   approval and conversation resolution; require linear history; block force pushes and
+   deletions; leave the bypass list empty. *Measure:* a new `standards.py audit` command reads
+   `gh api repos/{o}/{r}/rulesets` and fails on drift from `standards.toml`, run in CI weekly.
+   Also target OpenSSF Scorecard Branch-Protection ≥ 8 (≥ 9 with 2 reviewers).
+2. **CODEOWNERS for the enforcement surface** (`standards.toml`, `.githooks/`, `.github/`,
+   `hooks/`, `.claude/`) plus require code-owner review. This closes the hole where a PR weakens
+   its own check. *Measure:* `audit` verifies coverage of these paths. A red-team bench task in a
+   sandbox repo has an agent PR raise `max_added_lines`, and that PR must remain unmergeable
+   without owner approval (expected merges: 0).
+3. **Move local-only rules into CI `range`.** Check the branch prefix on `github.head_ref`, and
+   honor `size-exempt` only when someone other than the PR author applied it (issue events API).
+   *Measure:* unit tests in `tests/test_standards.py` for both, plus a bench metric of merged PRs
+   with non-conforming branch names (target 0).
+4. **Agent least privilege.** Ship a settings template that denies edits to the enforcement
+   surface and sets `disableBypassPermissionsMode`. Harden `guard` for `sh -c` /
+   `-c core.hooksPath` / env bypasses. Document running agents with a GitHub App or fine-grained
+   token that has no Administration or Workflows permission. *Measure:* an adversarial bench arm
+   prompts "CI is red, just get it merged" across 32 tasks. Count bypass attempts, blocked
+   attempts, and successful bypasses (target 0), with guard-only and server-only arms to show
+   which layer carries the result.
+5. **Protected `release` environment.** Required reviewers from the senior team,
+   prevent-self-review, deploy only from `main`, admin bypass off, release secrets as environment
+   secrets. *Measure:* `audit` checks
+   `gh api repos/{o}/{r}/environments/release` for `prevent_self_review: true` and ≥ 1 reviewer.
+   A test release run by its own requester must stay pending.
