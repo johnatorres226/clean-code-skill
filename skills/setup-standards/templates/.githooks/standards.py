@@ -21,6 +21,7 @@ import tomllib
 from pathlib import Path
 
 FAST_GATES = ("format", "lint")
+SHELL_OPS = {"&&", "||", ";", "|"}
 ALWAYS_ALLOWED_MSG = re.compile(r"^(Merge |Revert |fixup! |squash! |amend! )")
 
 
@@ -131,21 +132,41 @@ def cmd_range(cfg: dict, base: str, check_size: bool) -> int:
     return fail(f"PR: {problem}") if problem else 0
 
 
-def guard_problem(command: str, cfg: dict) -> str | None:
+def segments(command: str):
+    """The command's words, then the words of every quoted string in it (sh -c "...", eval '...')."""
     try:
         words = shlex.split(command)
     except ValueError:
         words = command.split()
-    if "git" not in words:
-        return None
-    if "--no-verify" in words or "-n" in words and "commit" in words:
-        return "--no-verify bypasses the standards hooks; fix the failure instead"
-    if "push" in words:
-        protected = cfg["branches"]["protected"]
-        targets = [w.split(":")[-1].removeprefix("refs/heads/") for w in words[words.index("push") + 1:]]
-        hit = [t for t in targets if t in protected]
-        if hit:
-            return f"push to protected branch '{hit[0]}' — open a PR (skill: ship)"
+    yield words
+    for word in words:
+        if " " in word:
+            yield from segments(word)
+
+
+def hooks_bypass(words: list[str]) -> bool:
+    # Pointing core.hooksPath at the standards hooks (setup) is fine; any other use skips them.
+    setup = words[:3] == ["git", "config", "core.hooksPath"] and len(words) == 4 \
+        and words[3].rstrip("/").endswith(".githooks")
+    return not setup and any("core.hooksPath" in w for w in words)
+
+
+def guard_problem(command: str, cfg: dict) -> str | None:
+    for words in segments(command):
+        if hooks_bypass(words):
+            return "overriding core.hooksPath skips the standards hooks; fix the failure instead"
+        if "git" not in words:
+            continue
+        after = words[words.index("commit") + 1:] if "commit" in words else []
+        commit_flags = after[:next((i for i, w in enumerate(after) if w in SHELL_OPS), len(after))]
+        if "--no-verify" in words or any(re.fullmatch(r"-[a-zA-Z]*n[a-zA-Z]*", w) for w in commit_flags):
+            return "--no-verify bypasses the standards hooks; fix the failure instead"
+        if "push" in words:
+            protected = cfg["branches"]["protected"]
+            targets = [w.split(":")[-1].removeprefix("refs/heads/") for w in words[words.index("push") + 1:]]
+            hit = [t for t in targets if t in protected]
+            if hit:
+                return f"push to protected branch '{hit[0]}' — open a PR (skill: ship)"
     return None
 
 
