@@ -43,7 +43,19 @@ def test_guard():
     assert "protected" in s.guard_problem("git push origin HEAD:refs/heads/dev", CFG)
     assert "--no-verify" in s.guard_problem("git commit --no-verify -m x", CFG)
     assert "--no-verify" in s.guard_problem("git commit -n -m x", CFG)
+    assert "--no-verify" in s.guard_problem("git commit -anm x", CFG)
     assert s.guard_problem("ls -la", CFG) is None
+    # bypasses wrapped in a nested shell or routed around the hooks directory
+    assert "--no-verify" in s.guard_problem('sh -c "git commit --no-verify -m x"', CFG)
+    assert "protected" in s.guard_problem("bash -c 'cd repo && git push origin main'", CFG)
+    assert "hooksPath" in s.guard_problem("git -c core.hooksPath=/dev/null commit -m x", CFG)
+    assert "hooksPath" in s.guard_problem("GIT_CONFIG_KEY_0=core.hooksPath git commit -m x", CFG)
+    assert "hooksPath" in s.guard_problem("git config --unset core.hooksPath", CFG)
+    # legitimate commands stay allowed
+    assert s.guard_problem("git config core.hooksPath .githooks", CFG) is None
+    assert s.guard_problem("git commit -m x && git log -n 3", CFG) is None
+    assert s.guard_problem('git commit -m "fix: stop passing -n to the parser"', CFG) is None
+    assert s.guard_problem('bash -c "git commit -m \'docs: explain --no-verify policy\'"', CFG) is None
 
 
 def test_hooks_end_to_end():
