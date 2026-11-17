@@ -33,7 +33,11 @@ standards.toml                          → repo root (gates filled from step 1)
 .github/pull_request_template.md
 .editorconfig  .gitattributes
 CLAUDE.standards.md                     → appended to CLAUDE.md in step 5
+.claude/settings.json                   → last, in step 6: agents may not edit the enforcement files
 ```
+
+Fill `[roles]` in `standards.toml` (senior team, `guarded` paths, mid-tier `areas`), then generate
+`.github/CODEOWNERS` with `python .githooks/standards.py codeowners > .github/CODEOWNERS`.
 
 Then activate the hooks: `git config core.hooksPath .githooks`. This is per-clone, so it also
 goes in the README's setup steps for humans.
@@ -43,21 +47,32 @@ goes in the README's setup steps for humans.
 Create the integration branch if missing: `git branch dev <release>` and push it. If the team
 uses a different name, change `[branches]` rather than the scripts.
 
-## 4. Branch protection — confirm first, it changes shared settings
+## 4. Rulesets and release environment — confirm first, they change shared settings
 
-For each protected branch, with `gh` (needs admin on the repo):
+One ruleset per protected branch, generated from `standards.toml` (needs admin on the repo):
 
 ```bash
-gh api -X PUT repos/{owner}/{repo}/branches/<branch>/protection --input - <<'JSON'
-{"required_status_checks": {"strict": true, "contexts": ["standards"]},
- "enforce_admins": true,
- "required_pull_request_reviews": {"required_approving_review_count": 1},
- "restrictions": null, "allow_force_pushes": false, "allow_deletions": false}
-JSON
+for b in dev main; do
+  python .githooks/standards.py ruleset $b | gh api -X POST repos/{owner}/{repo}/rulesets --input -
+done
 ```
 
-Set the review count from `[pr].reviews_required`. On a solo repo, offer `0` reviews with the
-status check still required. If `gh` lacks admin rights, print the command for the owner instead.
+Each requires a PR, the strict `standards` check from GitHub Actions, code-owner review,
+dismissal of stale approvals, approval of the last push by someone else, resolved conversations,
+and no force pushes or deletions; the integration branch also requires linear history. The bypass
+list is empty. Only on a solo repo set `[roles].admin_bypass = true`: the admin may then merge
+their own PRs, never push directly, and each bypass is logged. After the first apply, check that
+the ruleset page lists "Repository admin" as the bypass actor. If you already ran classic
+protection, delete it (`gh api -X DELETE repos/{owner}/{repo}/branches/<b>/protection`) so one
+source of rules remains.
+
+Releases: create a `release` environment with the senior team as required reviewers,
+"Prevent self-review" on, admin bypass off, and deployments limited to `main`. Keep deploy
+secrets in that environment, never in repository secrets.
+
+If `gh` lacks admin rights, print the commands for the owner instead. Agents run with a GitHub
+App or fine-grained token without Administration or Workflows permission, so they can never
+change these settings.
 
 ## 5. The always-loaded block
 
@@ -71,7 +86,8 @@ agent code quality, since headless agents rarely load skills on their own.
 Run `python3 .githooks/standards.py check` — every non-empty gate must pass on the current tree.
 A gate that fails on existing code is a finding to report, not a reason to blank the gate. Then
 commit on a branch as `chore: adopt clean-code-standards` and open a PR (skill: `ship`). The
-hooks run on that very commit, which is the end-to-end test.
+hooks run on that very commit, which is the end-to-end test. Copy `.claude/settings.json` last:
+from then on agents cannot edit `standards.toml`, `.githooks/`, `.github/` or `.claude/`.
 
 Report: the gates chosen and why, files added or skipped, protection applied or the command
 handed to the owner, and the first `check` result.
