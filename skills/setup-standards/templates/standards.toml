@@ -19,7 +19,16 @@ max_added_lines   = 400                # review quality drops sharply past ~400 
 max_files         = 25
 reviews_required  = 1
 
-[size]                                 # deletions never count; PR label `size-exempt` skips size checks
+[roles]                                # seniority = what you own, not your GitHub role
+senior       = ["@org/seniors"]        # own `guarded`, approve releases; associates own nothing
+guarded      = ["standards.toml", ".githooks/", ".github/", ".claude/"]  # the enforcement surface
+admin_bypass = false                   # true only on a solo repo: admin merges own PRs (PR-only, logged)
+
+[roles.areas]                          # mid tier: path -> owning team (seniors co-own every area)
+"src/billing/" = ["@org/billing"]
+
+[size]                                 # deletions never count; `size-exempt` skips size checks when
+                                       # a reviewer (not the PR author) applies it
 exclude = ["*.lock", "*-lock.json", "*.min.*", "*.snap", "vendor/*", "dist/*"]
 
 [gates]                                # shell commands, run in this order; "" = not applicable
