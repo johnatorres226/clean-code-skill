@@ -36,8 +36,11 @@ Run the `verify` skill first. Then push the branch and open a PR **to `dev`**:
 
 ```bash
 git push -u origin HEAD
-gh pr create --base dev --fill-first   # then complete the template: Why, What, Evidence
+gh pr create --base dev --fill-first   # then complete the template; first line: Closes #<ticket>
 ```
+
+CI rejects a PR whose description does not link its ticket, and a PR that changes acceptance
+tests (`[tests].holdout`) together with code: tests that define "done" change in their own PR.
 
 Over the PR size limit → split into stacked PRs, each independently reviewable and green. The
 only exception is work that cannot be split meaningfully (bootstrap, vendored code, a mechanical
@@ -49,7 +52,7 @@ checked; deletions never count toward limits.
 
 Review the PR diff (`gh pr diff`) as a reviewer who did not write it — a fresh subagent or another
 model when available, so the author is not grading their own work. Use the `clean-code` review
-procedure (`references/review-rubric.md`): correctness first, then design, names, tests. A
+procedure (`../clean-code/references/review-rubric.md`): correctness first, then design, names, tests. A
 dedicated review tool (`/code-review`, pstack `interrogate`, bugbot) replaces this step, not the
 next one.
 
@@ -60,7 +63,11 @@ re-run `verify`. Unaddressed blocking findings mean not mergeable.
 ## 5. Merge
 
 Mergeable = CI `standards` green + required reviews + no open blocking findings + branch up to
-date with `dev`. Merge with the method in `[branches].merge` (default rebase, which keeps the
+date with `dev`. Who may merge is tiered (`docs/adr/0001` in this plugin's repo): paths in
+`[roles].auto_merge` merge once `standards` and the reviewer agent's `verdict` check pass; every
+other path needs a code owner's approval. Enable auto-merge (`gh pr merge --auto --rebase`) and
+move on; never approve your own PR or ask an agent to approve it. pstack: use Autopilot-stack
+when the PR needs a human approval, Autopilot-full only for `auto_merge` paths. Merge with the method in `[branches].merge` (default rebase, which keeps the
 atomic commits): `gh pr merge --rebase --delete-branch`. Never force-push or push directly to a
 protected branch — the guard hook blocks it.
 
