@@ -17,12 +17,23 @@ max_files         = 10
 [pr]
 max_added_lines   = 400                # review quality drops sharply past ~400 lines
 max_files         = 25
-reviews_required  = 1
+reviews_required  = 0                  # human approval comes from code-owner review (docs/adr/0001)
+require_issue     = true               # PR description links its ticket: "Closes #N" / "Refs #N"
 
 [roles]                                # seniority = what you own, not your GitHub role
 senior       = ["@org/seniors"]        # own `guarded`, approve releases; associates own nothing
 guarded      = ["standards.toml", ".githooks/", ".github/", ".claude/"]  # the enforcement surface
 admin_bypass = false                   # true only on a solo repo: admin merges own PRs (PR-only, logged)
+auto_merge   = ["src/"]                # verifiable paths: no code owner, so agents merge them once
+                                       # `standards` + `verdict` pass. [] = humans approve everything
+
+[tests]
+holdout = ["tests/acceptance/"]        # acceptance tests agents cannot rewrite: senior-owned, and a PR
+                                       # changing them may change nothing else
+
+[review]                               # reviewer agent: a separate GitHub App posting a status check
+check  = "verdict"                     # (never an approval), bound to the head commit
+app_id = 0                             # its App id; 0 = not set up, so the check is not required yet
 
 [roles.areas]                          # mid tier: path -> owning team (seniors co-own every area)
 "src/billing/" = ["@org/billing"]

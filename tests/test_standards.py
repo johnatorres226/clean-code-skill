@@ -62,9 +62,12 @@ def test_guard():
 
 
 def test_codeowners_and_ruleset():
-    owners = s.codeowners(CFG)
-    assert "/standards.toml @org/seniors" in owners  # enforcement surface -> senior tier
+    owners = s.codeowners(CFG).splitlines()
+    assert owners[1] == "* @org/seniors"  # default: a human approves (ADR 0001)
     assert "/src/billing/ @org/billing @org/seniors" in owners  # area -> mid tier, seniors too
+    assert "/src/" in owners  # verifiable path: no owner, agents may merge
+    later = owners[owners.index("/src/"):]  # last match wins: guarded + holdout beat auto_merge
+    assert "/standards.toml @org/seniors" in later and "/tests/acceptance/ @org/seniors" in later
     dev = {r["type"]: r.get("parameters", {}) for r in s.ruleset("dev", CFG)["rules"]}
     main = {r["type"]: r.get("parameters", {}) for r in s.ruleset("main", CFG)["rules"]}
     assert "required_linear_history" in dev and "required_linear_history" not in main
@@ -72,11 +75,28 @@ def test_codeowners_and_ruleset():
     assert main["pull_request"]["allowed_merge_methods"] == ["merge"]  # release keeps a merge commit
     pr = dev["pull_request"]
     assert pr["require_code_owner_review"] and pr["dismiss_stale_reviews_on_push"]
-    assert pr["require_last_push_approval"] and pr["required_review_thread_resolution"]
+    assert pr["required_review_thread_resolution"]
+    assert not pr["require_last_push_approval"]  # reviews_required = 0: it would block agent paths
+    strict = {**CFG, "pr": {**CFG["pr"], "reviews_required": 1}}
+    assert s.ruleset("dev", strict)["rules"][2]["parameters"]["require_last_push_approval"]
     assert dev["required_status_checks"]["strict_required_status_checks_policy"]
+    assert [c["context"] for c in dev["required_status_checks"]["required_status_checks"]] == ["standards"]
+    reviewed = {**CFG, "review": {"check": "verdict", "app_id": 42}}
+    checks = s.branch_rules("rebase", reviewed)[3]["parameters"]["required_status_checks"]
+    assert {"context": "verdict", "integration_id": 42} in checks  # reviewer agent's App only
     assert s.ruleset("dev", CFG)["bypass_actors"] == []  # template default: nobody bypasses
     solo = {**CFG, "roles": {**CFG["roles"], "admin_bypass": True}}
     assert s.ruleset("dev", solo)["bypass_actors"][0]["bypass_mode"] == "pull_request"
+
+
+def test_pr_rules():
+    assert s.link_problem("Adds export.\n\nCloses #12", CFG) is None
+    assert s.link_problem("Refs #7", CFG) is None
+    assert "ticket" in s.link_problem("Adds export.", CFG)
+    assert s.link_problem(None, CFG) is None  # no body given (local run): not checked
+    assert s.holdout_problem(["tests/acceptance/test_export.py"], CFG) is None
+    assert s.holdout_problem(["src/export.py", "tests/unit/test_export.py"], CFG) is None
+    assert "own PR" in s.holdout_problem(["src/export.py", "tests/acceptance/test_export.py"], CFG)
 
 
 def test_hooks_end_to_end():
