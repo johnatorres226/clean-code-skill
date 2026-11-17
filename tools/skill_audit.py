@@ -119,7 +119,7 @@ def check_links(skill_dir: Path, result: AuditResult) -> None:
     linked: set[str] = set()
     for md in sorted(skill_dir.rglob("*.md")):
         text = md.read_text(encoding="utf-8", errors="replace")
-        for target in re.findall(r"references/([A-Za-z0-9._\-]+\.md)", text):
+        for target in re.findall(r"(?<![\w./-])references/([A-Za-z0-9._\-]+\.md)", text):  # own refs, not ../other-skill/
             linked.add(target)
             if not (skill_dir / "references" / target).exists():
                 result.issues.append(Issue(
