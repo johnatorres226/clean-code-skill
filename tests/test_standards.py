@@ -35,6 +35,9 @@ def test_branches():
     assert s.branch_problem("feat/export", CFG) is None
     assert "protected" in s.branch_problem("main", CFG)
     assert "must start" in s.branch_problem("johns-branch", CFG)
+    assert s.head_problem("feat/export", CFG) is None
+    assert s.head_problem("dev", CFG) is None  # release PR dev -> main
+    assert "must start" in s.head_problem("patch-1", CFG)
 
 
 def test_guard():
