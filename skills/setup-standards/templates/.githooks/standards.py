@@ -5,7 +5,9 @@
   staged               pre-commit: block commits on protected branches and oversized commits
   commit-msg FILE      commit-msg: Conventional Commit format
   pre-push             pre-push: block pushes to protected branches, bad branch names; run check
-  range BASE [--no-size]  CI: every commit in BASE..HEAD passes message + size, PR total within limit
+  range BASE [--no-size] [--branch NAME]
+                       CI: every commit in BASE..HEAD passes message + size, PR total within
+                       limit, PR branch named <type>/<slug> (a protected head = release PR)
   guard                Claude Code PreToolUse hook: block bypasses of the above (exit 2)
 """
 from __future__ import annotations
@@ -122,7 +124,15 @@ def cmd_pre_push(cfg: dict, stdin: str) -> int:
     return cmd_check(cfg, fast=False)
 
 
-def cmd_range(cfg: dict, base: str, check_size: bool) -> int:
+def head_problem(branch: str, cfg: dict) -> str | None:
+    """A PR's source branch: <type>/<slug>, or a protected branch being released (dev -> main)."""
+    return None if branch in cfg["branches"]["protected"] else branch_problem(branch, cfg)
+
+
+def cmd_range(cfg: dict, base: str, check_size: bool, branch: str | None = None) -> int:
+    problem = branch and head_problem(branch, cfg)
+    if problem:
+        return fail(f"PR: {problem}")
     for sha in git("rev-list", "--no-merges", f"{base}..HEAD").split():
         problem = message_problem(git("log", "-1", "--format=%B", sha), cfg) or \
             (check_size and size_problem(git("show", "--numstat", "--format=", sha), cfg))
@@ -195,7 +205,8 @@ def main(argv: list[str]) -> int:
     if cmd == "pre-push":
         return cmd_pre_push(cfg, sys.stdin.read())
     if cmd == "range":
-        return cmd_range(cfg, args[0], check_size="--no-size" not in args)
+        branch = args[args.index("--branch") + 1] if "--branch" in args else None
+        return cmd_range(cfg, args[0], check_size="--no-size" not in args, branch=branch)
     if cmd == "guard":
         return cmd_guard(cfg, sys.stdin.read())
     print(__doc__)
