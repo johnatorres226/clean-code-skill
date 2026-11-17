@@ -46,10 +46,11 @@ The only always-loaded cost is the ~120-token `## Standards` block in the govern
 | No commits to `main`/`dev` | `pre-commit` hook, branch protection |
 | Conventional Commit subject ≤ 72 chars | `commit-msg` hook, CI range check |
 | ≤ 300 added lines / 10 files per commit | `pre-commit` hook, CI range check |
-| ≤ 400 added lines / 25 files per PR | CI range check (`size-exempt` label overrides, visibly) |
-| Branch names `<type>/<slug>`, no pushes to protected | `pre-push` hook, branch protection |
+| ≤ 400 added lines / 25 files per PR | CI range check (`size-exempt` label overrides only when applied by someone other than the author) |
+| Branch names `<type>/<slug>`, no pushes to protected | `pre-push` hook, CI range check, branch protection |
 | Gates (format, lint, typecheck, test) pass | `pre-commit` (fast), `pre-push` + CI (all) |
-| Agents never bypass hooks or push to protected | Claude Code `PreToolUse` guard hook |
+| Agents never bypass hooks or push to protected | Claude Code `PreToolUse` guard hook (incl. `sh -c`, `core.hooksPath`) |
+| A PR cannot loosen its own checks | CI runs `standards.py` + `standards.toml` from the base branch |
 | Review before merge | branch protection (required checks and reviews), `ship` skill |
 
 Deletions never count toward size limits, so cleanup is never blocked. The guard hook is a no-op

@@ -41,7 +41,8 @@ gh pr create --base dev --fill-first   # then complete the template: Why, What, 
 
 Over the PR size limit → split into stacked PRs, each independently reviewable and green. The
 only exception is work that cannot be split meaningfully (bootstrap, vendored code, a mechanical
-bulk rename): label the PR `size-exempt` and say why in its description. Messages are still
+bulk rename): say why in the description and ask a reviewer to label the PR `size-exempt` (CI ignores the
+label when the author applied it). Messages are still
 checked; deletions never count toward limits.
 
 ## 4. Review pass — after the PR exists, before merge
