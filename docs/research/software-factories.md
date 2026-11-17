@@ -259,3 +259,82 @@ vendor-run. **No study measures the quality of a no-human-review pipeline.**
 **Apply here.** Measure, don't assume: warnings and complexity delta per PR, agent-PR revert rate,
 and the addressed rate of reviewer-agent comments.
 
+## Comparison
+
+| Framework | Lifecycle model | Review gate type | Merge authority | Traceability mechanism | Evidence quality |
+|---|---|---|---|---|---|
+| StrongDM factory | spec + scenarios → agent loop → converge | LLM-judged holdout scenarios vs digital twins; no human | not stated (implied automated) | specs, scenarios outside repo | self-report, no outcome data |
+| OpenAI harness eng. | plans in repo → Codex → agent review | agent-to-agent + linters/structural tests | UNVERIFIED | AGENTS.md map, `docs/` plans | self-report; primary not fetched |
+| Copilot cloud agent | issue → branch → draft PR | deterministic (CodeQL, secrets, deps) + LLM self-review + human | human; requester can't approve | co-author trailer, signed commits, commit→session log | official docs (mechanics) |
+| gh Agentic Workflows | event/schedule → read-only agent → safe outputs | threat-detection job + human | human, never auto-merge | lock file, declared outputs | official docs; preview |
+| Codex / Claude / Bugbot / uReview | PR opened → reviewer | LLM, precision-first; Bugbot check neutral by default | human | inline comments, ratings | vendor-internal metrics |
+| Stripe Minions | Slack → devbox → blueprint → PR | deterministic lint + CI (≤2 rounds) + human review | human | PR template, Slack thread | first-party, throughput only |
+| Ramp Inspect | task → sandbox → visually verified PR | tests/telemetry/screenshots + human | human (implied) | session, multiplayer | first-party, adoption only |
+| Spec Kit | constitution→specify→plan→tasks→implement | LLM checklists, Phase −1 gates | not defined | `specs/NNN/` + feature branch | null result for spec artifacts (ESEM) |
+| Kiro | requirements→design→tasks | human approval between phases | not defined | three files per spec | vendor; one unverified study |
+| AI-DLC | Inception→Construction→Operations (bolts) | human in mob rituals | human | repo artifacts (asserted) | method paper, no outcomes |
+| BMAD | clarify→plan→build/verify→learn | persona review | not defined | briefs, specs, stories | adoption only |
+| Gas Town | convoy → polecats → Refinery | deterministic gates on batched stack | Refinery (bisecting queue) | Beads (git-backed IDs) | single author, no data |
+| Anthropic C compiler / Cursor | lock files / planner-worker-judge | test oracle; judge LLM | agents push to shared branch | git history only | builder experiments |
+
+## Recurring patterns that work
+
+1. **Deterministic gates first, LLM loops bounded.** Stripe's sub-5 s local lint, ≤2 CI rounds,
+   then a human. Airbnb's per-step validation. Cursor's judge with fresh restarts.
+2. **Separate identities.** The author agent cannot approve, the requester cannot approve, and
+   agent PRs need an extra approval (Copilot). Reviewers comment but do not approve (Anthropic,
+   gh-aw).
+3. **An independent oracle the author cannot edit**: holdout scenarios (StrongDM), GCC as oracle
+   (Anthropic), behavioral twins.
+4. **Precision over recall for AI review**, with feedback-tuned thresholds (Uber, OpenAI).
+5. **One serialized merge point** running full gates on the combined change (Gas Town Refinery,
+   merge queues). Workers stay independent.
+6. **Sandboxed, least-privileged execution** with writes through narrow channels (Stripe devboxes,
+   gh-aw safe outputs, Copilot single branch).
+
+## Recurring failure modes
+
+1. **Reward hacking of agent-written tests** (StrongDM "return true", Carlini's "solve the wrong
+   problem").
+2. **Regressions as agents add features** without a full-suite gate (Carlini).
+3. **Persistent complexity and warning growth** and duplication (He et al., GitClear), plus
+   instability (DORA).
+4. **Review noise leads to tune-out** (Uber), and overreliance on a clean AI review (OpenAI).
+5. **Coordination collapse**: locks held or leaked, risk-averse churn, integrator bottlenecks
+   (Cursor). Chaos above 4–10 agents (Gas Town).
+6. **Silent rejection and distrust** of agent PRs: 67.9% rejected without feedback (Nakashima).
+7. **Spec theatre**: specs that track task difficulty rather than reducing defects (Hill), and
+   slow, verbose spec flows (Eberhardt, cited by Hill).
+8. **Traceability is asserted, not enforced**: only Copilot mechanically links commit → session.
+
+## Implications for this plugin (ranked)
+
+1. **Reviewer agent as a separate identity whose output is a check, never an approval.** Give it a
+   GitHub App identity distinct from the author agent. It posts a `review-agent` status that
+   fails only on verified high-severity findings, and it is precision-tuned. Merge authority stays
+   with the ruleset: human (CODEOWNERS) approval, plus one extra approval when the author is an
+   agent. Add `[agents] author_apps`, `reviewer_app` and `extra_approval = true` to
+   `standards.toml`, and have `audit` verify them. *Measure:* the addressed rate of reviewer
+   comments (Uber/OpenAI baseline ≈ 50–65%) and false-positive reports.
+2. **Holdout acceptance tests under CODEOWNERS.** Declare `[tests] holdout = ["tests/acceptance/"]`.
+   CI fails an agent-authored PR that changes both holdout paths and implementation. Holdout
+   changes go through their own PR that needs owner review. This is the cheapest version of
+   StrongDM's scenarios. *Measure:* a red-team bench task where the agent "fixes" a failing test by
+   editing it must stay unmergeable.
+3. **Enforced traceability chain in CI `range`.** Each PR must reference an issue (`Closes #N`)
+   carrying acceptance criteria and a `ready-for-agent` / `ready-for-human` label. Each agent
+   commit carries trailers (`Refs: #N`, `Agent-Session: <url>`) checked like the Conventional
+   Commit subject. Deploys record the merged SHA in a `release` environment. Do not require spec
+   files (Hill).
+4. **Bounded agent loops.** Ship `[agents] max_ci_rounds = 2`: after two red CI runs on an agent
+   branch, label `needs-info` / `ready-for-human` and stop. Keep local gates fast enough to run on
+   every push (Stripe).
+5. **Merge queue for parallel agents.** When more than one agent runs, require `merge_group` on
+   `dev` with the full gates and worktree-per-agent branches. Keep the existing PR size limits:
+   small batches are a DORA AI capability.
+6. **Least-privileged author token, safe-output style.** The author agent can push `<type>/` branches
+   and open PRs. It cannot approve, merge, edit `.github/` or touch rulesets (extends
+   `process-control.md` E).
+7. **Quality drift report.** `standards.py report` tracks per-PR deltas for lint warnings,
+   complexity and duplication, plus the revert rate of agent PRs, split by author type. These are
+   the metrics He et al. and GitClear show degrade.
