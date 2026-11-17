@@ -36,7 +36,7 @@ commit with the reason.
 | Config / infra | Apply it somewhere disposable, read back the result. |
 
 No tests exist for the area? Write characterization tests for what you touch first (skill:
-`clean-code`, `references/tdd-and-tests.md`).
+`clean-code`, `../clean-code/references/tdd-and-tests.md`).
 
 ## 3. Report honestly
 
