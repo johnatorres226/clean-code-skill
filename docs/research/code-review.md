@@ -139,3 +139,199 @@ directories, entropy, fix, file age and churn, author history on these paths) de
 agent reviews. A **consequence** check (irreversible, data loss, blast radius) decides the tier.
 A tiny diff can still be a one-way door: `DROP COLUMN` is one line.
 
+# Part II. Current practice (2025–2026, fast-moving)
+
+## 5. AI reviewers: structure, severity, noise control
+
+**Finding.** All products checked (November 2026) converge on the same shape. The reviewer reads the
+diff plus repo context. It posts inline comments and a summary. It rates severity on a short scale
+and lets the repo tune what is flagged through a committed file. Most do not approve. Noise is cut
+with a strictness knob, a nit cap, path exclusions, and learning from reactions and replies.
+
+| Product (doc date) | Structure | Severity | Noise controls / config | Published numbers (vendor claims) |
+|---|---|---|---|---|
+| Claude Code Review (managed; docs Nov 2026, launch 2026-03-09) | Several agents find in parallel, a verify step drops false positives, then dedupe and rank; inline comments + summary + `Claude Code Review` check run | 🔴 Important, 🟡 Nit, 🟣 Pre-existing | `REVIEW.md` (read from base/default branch, never from the PR) + `CLAUDE.md`; nit caps, skip paths, "require `file:line` evidence"; levels Quick/Standard/Deep. Never approves or blocks; check concludes neutral; counts in an HTML comment `bughunter-severity` for CI gating. GitHub only; GitLab via own CI | Substantive review comments on 16% → 54% of PRs; >1,000-line PRs: 84% get findings, 7.5 issues avg; <50 lines: 31%, 0.5; "less than 1% of findings are marked incorrect" |
+| GitHub Copilot code review (docs Nov 2026; agentic since 2026-03-05) | Overview comment with approval assessment, inline comments, suggested fixes | not documented | `.github/copilot-instructions.md`, path-scoped `*.instructions.md`, `AGENTS.md`; effort Lite/Balanced/Max/Adaptive. Does not count toward required approvals by default; can approve if enabled at repo, org and enterprise | 60M reviews; 71% surface actionable feedback, 29% "says nothing at all"; ~5.1 comments/review; measured by thumbs, and by issues resolved before merge |
+| Cursor Bugbot (docs Nov 2026) | Bugs, security, quality in the diff; autofix via cloud agent | not documented | `.cursor/BUGBOT.md` (root always, nested by path; 30k chars/rule, 100k total); learned rules from reactions, replies and human comments, promoted on evidence, disabled on negative signal. GitHub and GitLab | Resolution rate 52% (Jul 2025) → 78.13% over 50,310 PRs (2026-04-08), measured by an LLM judge at merge. Same post: Greptile 63.49%, CodeRabbit 48.96%, Copilot 46.69% |
+| CodeRabbit (docs Nov 2026) | Summary + inline; tools (linters) run inside | types Potential issue / Refactor suggestion / Nitpick; severity critical, major, minor, trivial (+ info) | `.coderabbit.yaml`: `profile` quiet/chill (default)/assertive; `path_instructions`, `path_filters`; learnings scope; `auto_approvals.min_blocking_severity`; pre-merge checks off/warning/error | none found first-party |
+| GitLab Duo (docs Nov 2026) | Duo Code Review (single pass, Duo Enterprise) or Code Review Flow (agentic, credits); `@GitLabDuo` chat; "Resolve with GitLab Duo" pushes a fix | not documented | `.gitlab/duo/mr-review-instructions.yaml` with `fileFilters` groups; GitLab suggests a CODEOWNERS entry to protect it | none found |
+| Greptile (docs Nov 2026) | Inline comments with optional confidence score | `strictness` 1–3 (default 2) | `greptile.json` / `.greptile/`; `commentTypes` logic/syntax/style; learns from 👍/👎 over "2–3 weeks" | Own benchmark (Jul 2025): 82% of 50 bugs caught; see §9 |
+| Qodo (blog 2025-01-29) | Two routes: critical problems, and company best practices | severity threshold (default "action required") | dropping priority tiers and asking only for "major problems and bugs" | +50% suggestion acceptance (method not stated) |
+| Graphite Agent (docs Nov 2026) | "Focuses on real bugs - not just style" | not documented | custom rules; acceptance-rate dashboard | "<3%" and "<5%" unhelpful comments on different pages; not verified |
+
+**Sources.** Claude Code docs: "Code Review", "Read and request reviews on a pull request",
+"Customize Code Review", https://code.claude.com/docs/en/code-review; Anthropic, "Code Review for
+Claude Code", 2026-03-09, https://claude.com/blog/code-review. GitHub, "About GitHub Copilot code
+review", https://docs.github.com/en/copilot/concepts/agents/code-review; GitHub changelog
+2026-03-05 "Copilot code review now runs on an agentic architecture"; GitHub blog, "60 million
+Copilot code reviews and counting", 2026-03-05. Cursor, "Bugbot" docs, https://cursor.com/docs/bugbot;
+"Bugbot learning", 2026-04-08, https://cursor.com/blog/bugbot-learning. CodeRabbit, "Configuration
+reference", https://docs.coderabbit.ai/reference/configuration, and "Findings",
+https://docs.coderabbit.ai/change-stack/findings. GitLab, "GitLab Duo in merge requests",
+https://docs.gitlab.com/user/project/merge_requests/duo_in_merge_requests/; "Customize review
+instructions", https://docs.gitlab.com/user/duo_agent_platform/customize/review_instructions/.
+Greptile, "Controlling nitpickiness", https://www.greptile.com/docs/code-review/controlling-nitpickiness.
+Qodo, "Effective code suggestions from LLMs: less is more", 2025-01-29. Graphite, "AI reviews",
+https://graphite.com/docs/ai-reviews.
+
+**Confidence.** High on mechanisms (first-party docs). **Low on every number**: each vendor picks
+its own metric (resolution, acceptance, "actionable", "incorrect"), its own sample and its own
+judge. The cross-vendor table in Cursor's post is a competitor's measurement.
+
+**Apply here.** Copy the converged shape: find → verify → rank → post. Use three severities that
+map to tiers (Important blocks agent merge; Nit never blocks; Pre-existing is reported, never
+blocks). Read review instructions from the **base branch only**, as Claude Code does, so a PR cannot
+weaken its own review. Cap nits. Be silent when there is nothing (Copilot's 29%). Expose the verdict
+as a machine-readable line, like `bughunter-severity`, for the status check.
+
+## 6. Change requests on human and agent PRs
+
+**Finding (dated 2026).** The AIDev dataset (Li, Zhang, Hassan, 2025-07) covers 456k PRs from five
+agents. Agent PRs merge less often than human PRs, though agents are faster. Later studies on it:
+
+- Haider & Zimmermann (MSR 2026) tagged 19,450 review comments on 3,177 agent PRs. Ranked by
+  share of comments: feature/implementation 38.5%, refactor/simplify 14%, docs/logs 11.4%, style
+  10.3%, reverts and change rejection 10%, tests >5%, dependencies 3.3%, security 2.9%, build 2.5%,
+  performance ~1%, CI 0.6%. Security and build themes were more common in **rejected** PRs; docs
+  and style in accepted ones.
+- Abujadallah et al. (MSR 2026): 46.41% of agent fixes rejected. Four reason groups: incorrect
+  implementation (incomplete, wrong approach), failing CI and tests, agent unable to implement, low
+  priority.
+- Ehsani et al. (MSR 2026), 33k PRs: docs, CI and build tasks merge most; performance and bug fixes
+  least. Unmerged PRs are larger, touch more files and fail CI more. Rejection reasons include no
+  reviewer engagement, duplicates, unwanted features, and misalignment with the request.
+- Peralta et al. (MSR 2026), 717 inspected PRs: only 35.7% of rejections show clear agent failure;
+  31.2% are workflow constraints; 33.1% give no reason. Nakashima et al. (preprint 2026-02): 67.9% of
+  rejected agent PRs have no explicit feedback; "distrust of AI-generated code" is one of seven
+  agent-only rejection modes.
+- Sakib et al. (KDD AgenticSE 2026): 38.9% of agent PRs carry at least one security smell, 82.3% of
+  smells are supply-chain integrity, hard-coded credentials are 99.6% of critical smells, and review
+  missed 81.1% of leaked credentials. Cynthia et al. (2026-01): merged agent bug fixes add
+  SonarQube issues, mostly smells, and "merge success does not reliably reflect post-merge code
+  quality".
+
+For human PRs the long-standing answer is §1: about 75% evolvability (documentation, structure,
+naming), 25% functional (logic, checks, interfaces, resources).
+
+**Sources.**
+- Li, Zhang, Hassan, "The Rise of AI Teammates in Software Engineering (SE) 3.0", arXiv:2507.15003, 2025; dataset paper arXiv:2602.09185
+- Haider, Zimmermann, "Understanding Dominant Themes in Reviewing Agentic AI-authored Code", MSR 2026. arXiv:2601.19287
+- Abujadallah, Arabat, Sayagh, "Understanding the Rejection of Fixes Generated by Agentic Pull Requests", MSR 2026. arXiv:2606.13468
+- Ehsani et al., "Where Do AI Coding Agents Fail? An Empirical Study of Failed Agentic Pull Requests in GitHub", MSR 2026. arXiv:2601.15195
+- Peralta et al., "Why Are Agentic Pull Requests Merged or Rejected? An Empirical Study", MSR 2026. arXiv:2605.22534
+- Nakashima, Ishimoto, Kondo, McIntosh, Kamei, "Why Agentic-PRs Get Rejected: A Comparative Study of Coding Agents", arXiv:2602.04226, 2026
+- Sakib, Banik, Jadliwala, "Trust but Verify? Uncovering the Security Debt of Autonomous Coding Agents", KDD 2026 AgenticSE workshop. arXiv:2607.12428
+- Cynthia, Muttakin, Roy, "Beyond Bug Fixes: ... Post-Merge Code Quality Issues in Agent-Generated Pull Requests", arXiv:2601.20109, 2026
+
+**Confidence.** Medium. One dataset (AIDev, cutoff 2025-08) underlies all of it, the agents have
+changed since, and up to two thirds of rejections have no stated reason. The direction agrees
+across five groups: wrong or unwanted implementation first, then CI and tests, then scope.
+
+**Apply here.** Agent PRs need two checks human review rarely runs: "is this what was asked" against
+the issue, and "did the agent change things it was not asked to" (the 10% revert theme). Security
+is rare in comments but common in code, so scan for secrets and dependency changes by tool, not by
+reading.
+
+## 7. Risk-scored automatic approval at scale
+
+**Finding (dated 2025–2026).** Meta's Diff Risk Score (blog 2025-08-06) is a fine-tuned Llama model
+that predicts whether a diff will cause a production incident. Meta uses it to let low-risk diffs
+land during code freezes: over 10,000 changes landed during one 2024 event "with minimal production
+impact". RADAR (preprint 2026-05) auto-reviews diffs through a funnel. It classifies by authorship
+and source, applies eligibility gates and static heuristics, then a DRS percentile threshold, LLM
+review, and deterministic validation before landing. It has reviewed 535K+ diffs and landed 331K+.
+Raising the threshold from the 25th to the 50th percentile raised the approve rate to 60.31%. The
+paper reports revert rate at 1/3 and production incidents at 1/50 of non-RADAR diffs. Those diffs
+were selected as low-risk, so the comparison is not causal.
+
+**Sources.**
+- Meta Engineering, "Diff Risk Score: AI-driven risk-aware software development", 2025-08-06. https://engineering.fb.com/2025/08/06/developer-tools/diff-risk-score-drs-ai-risk-aware-software-development-meta/
+- Adams et al. (31 authors, incl. Mockus, Rigby, Nagappan), "Automating Low-Risk Code Review at Meta: RADAR, Risk Calibration, and Review Efficiency", arXiv:2605.30208, 2026 (preprint)
+
+**Confidence.** Medium. One company, self-reported, with selection bias built in. It is still the
+only published system that auto-approves by risk at scale.
+
+**Apply here.** RADAR is the closest model for the kit: hard eligibility gates first (which no
+score can override), then a score threshold, then the LLM review, then deterministic checks. Start
+the threshold conservative and widen it only while reverts per tier stay flat.
+
+## 8. Platform mechanisms, GitHub vs GitLab (docs as of November 2026)
+
+**Finding.** Both platforms can enforce all three tiers. The plan tiers differ.
+
+- **Path ownership.** GitHub: CODEOWNERS in `.github/`, root or `docs/`; last match wins; owners
+  need explicit write access; "require review from Code Owners". GitLab (Premium/Ultimate):
+  CODEOWNERS in root, `docs/` or `.gitlab/`; sections `[Name]`, optional `^[Name]`, approval count
+  `[Name][2]`; "Code Owner approval" on a protected branch.
+- **Required approvals.** GitHub: ruleset or branch protection; reviewers need write access.
+  GitLab Free: approvals are optional and "don't prevent merging". Required approval rules, prevent
+  author approval and prevent committer approval need Premium.
+- **Verdict as a check.** GitHub: required status check, which can be pinned to the app that must
+  report it. GitLab: external status checks (Ultimate) block merge only with "Status checks must
+  succeed". A check pending over 2 minutes fails. On Free, `POST /projects/:id/statuses/:sha` adds a
+  job in an `external` stage of the commit's pipeline, and "Pipelines must succeed" gates on the
+  pipeline.
+- **Auto-merge.** GitHub: merges after required reviews and checks pass; turns off when someone
+  without write access pushes. GitLab (Free): waits for pipeline, required approvals and resolved
+  threads. It is the feature formerly called "merge when pipeline succeeds"; the push option keeps
+  that name.
+- **Inline review API.** GitHub: `POST /repos/{o}/{r}/pulls/{n}/reviews` with `event`
+  `COMMENT` / `REQUEST_CHANGES` / `APPROVE` (blank = pending) and `comments[]` (`path`, `line`,
+  `side`, `start_line`, `body`). It can trigger secondary rate limits. GitLab (Free): draft notes
+  with `position` (`base_sha`, `head_sha`, `start_sha`, `new_path`, `new_line`), then `bulk_publish`
+  with optional `reviewer_state=requested_changes`, which is not an approval.
+
+**Sources.** GitHub docs: "About code owners", "About protected branches", "Automatically merging a
+pull request", "REST API endpoints for pull request reviews", https://docs.github.com. GitLab docs:
+"Code Owners" and "Code Owners syntax", "Merge request approvals", "Approval rules", "External
+status checks", "Auto-merge", "Draft notes API", "Commits API: set the pipeline status of a
+commit", https://docs.gitlab.com. Plan availability for GitHub rulesets: `process-control.md` C.
+
+**Confidence.** High on what each control does. Medium on plan tiers, which move.
+
+**Apply here.** See mapping table (c) below. On GitLab Free the kit can comment, gate on a pipeline
+job, and auto-merge, but cannot **require** a human approval. Human-review tier on GitLab needs
+Premium, or the kit must fail its own pipeline job until a human sets a label. A label is weaker:
+any Developer can set it.
+
+## 9. Evaluating AI reviewers
+
+**Finding (dated 2025–2026).** There are three kinds of evidence, in falling order of rigor.
+
+1. **Known-defect benchmarks.** CR-Bench (preprint 2026-11) recasts 584 SWE-bench issues as review
+   tasks (174 verified). It measures Known-Defect Detection Rate and Usefulness Rate with three LLM
+   judges. The best agents find about one third of known defects. SWR-Bench (preprint 2025-09, rev.
+   2026-06) has 1,000 verified PRs with full context. An LLM judge agrees about 90% with humans.
+   Tools catch functional errors better than other kinds, and aggregating several reviews lifts F1
+   by up to 43.67%. Greptile's benchmark (Jul 2025) reintroduced 50 historical bug-introducing
+   commits from five OSS repos. It counts a catch only if a line comment names the faulty code and
+   its impact. It reports no precision. The vendor built, ran and won it.
+2. **Production proxies.** Resolution or acceptance rate: did the author change the code before
+   merge? (Cursor, Copilot, Graphite, Qodo.) Lin et al. (preprint 2026-07) studied 31,073 CodeRabbit
+   comments: 36.4% accepted, 7.3% discussed, 56.3% rejected, mostly for invalid suggestions or
+   mismatch with intent.
+3. **Text similarity to human comments** (CodeReviewer, FSE 2022). The data is noisy: about 64% of
+   sampled training comments were valid (Liu et al., MSR 2025). CRScore (NAACL 2025) is
+   reference-free and reaches 0.54 Spearman with human ratings.
+
+Resolution is not correctness. AFCRA (preprint 2026-10) used reviewer feedback to revise vulnerable
+code until Sonnet 5 and GPT-5.5 reviewers accepted it. Its success rates were 2.5× and 12.5× those
+of the best text-based attacks, and reviewers accepted fixes while the exploit still worked.
+
+**Sources.**
+- Pereira, Sinha, Ghosh, Dutta, "CR-Bench-v2: Evaluating the Real-World Utility of AI Code Review Agents", arXiv:2611.02566, 2026
+- Zeng et al., "SWR-Bench: Assessing LLM Performance in Real-World Code Review Comment Generation", arXiv:2509.01494, 2025
+- Greptile, "AI code review benchmarks", https://www.greptile.com/benchmarks (vendor)
+- Lin, Liang, Thongtanunam, Tantithamthavorn, "Is Agentic Code Review Helpful? Mining Developers' Feedback to CodeRabbit Reviews in the Wild", arXiv:2607.03316, 2026
+- Li et al., "Automating Code Review Activities by Large-Scale Pre-training" (CodeReviewer), ESEC/FSE 2022. arXiv:2203.09095
+- Liu, Lin, Thongtanunam, "Too Noisy To Learn: Enhancing Data Quality for Code Review Comment Generation", MSR 2025. arXiv:2502.02757
+- Naik, Alenius, Fried, Rosé, "CRScore: Grounding Automated Evaluation of Code Review Comments in Code Claims and Smells", NAACL 2025. doi:10.18653/v1/2025.naacl-long.457
+- Gong, Zhang, Jahangirova, Wang, "Adaptive Code Revision Attacks on AI Pull Request Reviewers", arXiv:2610.05399, 2026
+- UNVERIFIED: Martian "Code Review Bench" and its F1 rankings (secondary write-ups only).
+
+**Confidence.** Medium for known-defect methods; they are new and preprints. Low for every vendor
+leaderboard.
+
+**Apply here.** Measure recall on known defects, false positives on clean PRs, and resolution in
+production. Report each one separately. No single number covers the reviewer. See (d).
+
