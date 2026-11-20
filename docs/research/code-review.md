@@ -335,3 +335,138 @@ leaderboard.
 **Apply here.** Measure recall on known defects, false positives on clean PRs, and resolution in
 production. Report each one separately. No single number covers the reviewer. See (d).
 
+# Synthesis for the reviewer kit
+
+## (a) Ranked review checklist
+
+Order = how often it comes up × how bad it is when missed. Items 1–4 can block; 5–9 cannot.
+
+1. **Does it do what was asked?** Compare with the issue: wrong approach, incomplete work, unwanted
+   features, or a duplicate of open work. This is the top agent-PR theme (§6) and the functional
+   quarter of human review (§1).
+2. **Consequence.** Look for migrations, bulk deletes, dropped columns, format or protocol changes
+   (two-phase needed?), auth, payments, infra, public API, CI and rules. Any hit names a
+   human-review trigger (b). This is rare but the most severe.
+3. **Security and supply chain.** Check injection, path traversal, and new or bumped
+   dependencies. Secrets and known-vulnerable dependencies are the scanners' job, not the
+   reviewer's: review missed 81.1% of leaked credentials (§6). The reviewer confirms the scanners
+   ran and reads what they cannot judge.
+4. **Tests and CI.** Is CI green? Do the tests fail if the code is wrong? Did the agent weaken or
+   delete tests? Failing CI is a top rejection reason (§6).
+5. **Scope.** Look for changes nobody asked for (revert them), size, and files touched. Usefulness
+   drops with files (§2).
+6. **Structure.** Duplication, simplification and one job per unit (`review-rubric.md` step 4).
+7. **Docs and contracts.** A changed behavior needs updated docs, logs and changelog.
+8. **Clarity.** Names and *why* comments.
+9. **Style.** Only what the formatter cannot fix. Cap at five nits, as `nitpick (non-blocking):`.
+
+## (b) Tier signals
+
+Evaluate in this order; the first match wins. Every escalation names its trigger in the review,
+e.g. `human-review: db/migrate/20261119_drop_email.rb — DROP COLUMN (irreversible, data loss)`.
+
+| Tier | Signals (any one) | Evidence |
+|---|---|---|
+| **Human review** | *Path:* migrations and schema (`db/`, `**/migrations/**`, `*.sql`), auth and session and crypto, payments and billing, IaC (`*.tf`, `k8s/`, `helm/`, deploy config), CI and rules (`.github/`, `.gitlab-ci.yml`, `.githooks/`, `standards.toml`, CODEOWNERS, `REVIEW.md`, agent settings), public API specs (`*.proto`, `openapi.*`, exported package surface), and anything in `[roles].guarded`. *Content:* `DROP`/`TRUNCATE`/`DELETE` without `WHERE`, `update_all`/`delete_all`/`destroy_all`, removed columns or fields, changed serialization or wire format, new dependency or lockfile change, credential-like strings, permission or role changes. *Reviewer:* any Important finding in the security or data-loss class, or "could not verify" (no test reaches the changed code) | GitLab DB review triggers; AWS rollback safety; Bezos one-way doors; §6 security and build themes more common in rejected PRs; ADR 0001 guarded paths |
+| **Agent merge** | Default. Requires: no open Important finding, all threads resolved, checks green, and likelihood score under threshold. Above the threshold, escalate to human. Score inputs: lines added, files, directories, entropy, fix vs. feature, recent churn on touched files, agent-authored | Kamei JIT features; RADAR funnel; McIntosh participation |
+| **Auto-merge** | Only docs (`*.md`, `docs/`), comments, or config with no runtime effect; size under a small cap (start at 50 added lines); not a guarded path; reviewer has 0 Important findings. Starts as an allow-list and is never inferred | Agent docs PRs merge most often (Ehsani et al.); 31% of <50-line PRs still get a finding (Anthropic, vendor) |
+
+Treat a missed escalation as the costly error and an extra escalation as the cheap one. Tune for
+recall on the human tier.
+
+**Detection and judgment are separate controls.** Neither human nor agent review reliably finds
+security defects by reading: review missed 81.1% of leaked credentials (§6), and an author agent
+can revise until an agent reviewer approves vulnerable code (AFCRA, §9). So:
+
+1. **Detect with tools, as required checks.** Secret scanning with push protection, dependency
+   review and SAST block the merge on their own, whatever any reviewer says. They do not tire and
+   cannot be argued past.
+2. **The agent reviewer is a second net.** A security finding escalates to human review. A clean
+   agent review is not evidence of safety.
+3. **The human judges consequence, not hunts for defects.** On human-tier paths the human answers:
+   is this the right design, what breaks if it is wrong, can it be backed out, do we accept the
+   risk. The human is outside the author agent's revise-and-resubmit loop, so the author cannot
+   optimize against them. That, not better detection, is why these paths stay human.
+
+## (c) GitHub / GitLab mapping
+
+| Kit need | GitHub | GitLab | Plan note |
+|---|---|---|---|
+| Human approval on consequential paths | CODEOWNERS + ruleset "require review from Code Owners" | CODEOWNERS `[Section][n]` + "Code Owner approval" on protected branch | GL Premium+; GH private repos need a paid plan |
+| Approval count, no self-approval | Ruleset required approvals; author can't approve own PR | Approval rules + prevent author/committer approval | GL Premium+ (Free approvals are optional) |
+| `verdict` gate | Required status check pinned to the reviewer App | External status check + "Status checks must succeed" (Ultimate); else commit status API job + "Pipelines must succeed" (Free) | GL Ultimate for true external checks |
+| Agent and auto merge | Auto-merge after checks and reviews | Auto-merge (formerly MWPS): pipeline, approvals, threads | Both free |
+| Inline comments | Pull request reviews API, `event=COMMENT` or `REQUEST_CHANGES` | Draft notes + `bulk_publish` (`reviewer_state=requested_changes`) | GL Free |
+| Comments must be addressed | Require conversation resolution | Auto-merge waits for resolved threads | — |
+| Bot identity | GitHub App installation token (`process-control.md` E) | Project or group access token bot (not checked here) | — |
+| Review rules can't be weakened by the PR | Read `REVIEW.md` from base branch; CODEOWNERS on it | Same; GitLab suggests CODEOWNERS on `.gitlab/duo` | — |
+| Markdown-file mode | Write `review.md` with the same sections and the verdict line; no API calls | Same | — |
+
+## (d) Recommended evaluation
+
+1. **Seeded corpus (offline, per release).** Rebuild Greptile's method on our repos and add what
+   it lacks. Use 30 or more historical bug-introducing commits (found from fix commits), plus an
+   equal number of clean PRs, plus 10 one-way-door PRs (migrations, deletes, CI edits). Metrics:
+   known-defect recall (CR-Bench KDDR rule: a line comment names the fault and its impact), false
+   findings per clean PR, and human-tier recall (target: 100% of one-way-door PRs escalate).
+2. **Judge.** An LLM judge from another model family scores "named the fault" and "actionable".
+   Calibrate it on 20 human-labeled items with Cohen's κ (`quality-and-eval.md` B4).
+3. **Production proxies (continuous).** Addressed-comment rate per severity, Important findings
+   dismissed without change, reverts and incidents per tier per 100 merges (RADAR's outcome
+   metrics), and time to merge per tier. ADR 0001 already names reverts as the rollback trigger.
+4. **Adversarial arm.** Take 10 known vulnerabilities and let an agent revise against the
+   reviewer's feedback for five rounds (AFCRA). Count how many reach "no findings" with the exploit
+   intact. Target: zero merge without human review, which holds when security paths are human-tier.
+5. **Do not** use BLEU or similarity to human comments, or a vendor leaderboard, as the main measure.
+
+## Citation verification
+
+Method: checked 2026-11-19 by an AI agent (Claude) against DOI or arXiv abstract pages, official
+docs and vendor first-party pages, using WebFetch and WebSearch. PDFs of Beller 2014, Bosu 2015 and
+Rigby & Bird 2013 could not be read, so those claims are checked against abstracts only.
+
+| Source as cited | Verdict | Correct citation | Note |
+|---|---|---|---|
+| Mäntylä, Lassenius, TSE 2009 | verified | IEEE TSE 35(3):430–448. doi:10.1109/TSE.2008.71 | 75% of defects evolvability; 388 industrial + 371 student defects. |
+| Beller et al., MSR 2014, "~75/25 evolvability vs functional" | corrected | MSR 2014, pp. 202–211. doi:10.1145/2597073.2597082 | Paper says "maintainability-related" vs functional, 75:25, confirming Mäntylä's evolvability ratio. Subtype percentages not checked. |
+| Bacchelli, Bird, ICSE 2013 | verified | ICSE 2013, pp. 712–721. doi:10.1109/ICSE.2013.6606617 | Abstract-level claims only; no per-category percentages used. |
+| Bosu, Greiler, Bird, MSR 2015 | verified | MSR 2015, pp. 146–156. doi:10.1109/MSR.2015.21 | Experience and files findings from the abstract. |
+| "34.5% of comments not useful" (Bosu et al.) | unverifiable | — | Only seen as a citation in arXiv:1807.04485. |
+| Google eng-practices, comments page | verified | https://google.github.io/eng-practices/review/reviewer/comments.html | Nit / Optional (Consider) / FYI labels quoted. |
+| *Software Engineering at Google*, ch. 9 | verified | https://abseil.io/resources/swe-book/html/ch09.html | Three approvals; "about 200 lines"; correctness not the primary benefit. |
+| Conventional Comments | verified | https://conventionalcomments.org/ | Labels and decorations as listed. |
+| Sadowski et al., ICSE-SEIP 2018 | verified | doi:10.1145/3183519.3183525 | Numbers verified in `process-control.md`. |
+| Kudrjavets, Nagappan, Rastogi, MSR 2022 (small changes) | verified | arXiv:2203.05045 | 845,316 PRs; size does not relate to time-to-merge. |
+| Kudrjavets et al., MSR 2022 (waiting times) | verified | arXiv:2203.05048 | Abstract via search; 29–63% speedup estimate not used. |
+| McIntosh et al., MSR 2014 | verified | MSR 2014, pp. 192–201 | Up to 2 and 5 extra post-release defects. |
+| Rigby, Bird, ESEC/FSE 2013 | verified | doi:10.1145/2491411.2491444 | Convergence and 66–150% from the abstract. |
+| Kamei et al., TSE 2013; Mockus, Weiss 2000 | verified | doi:10.1109/TSE.2012.70; doi:10.1002/bltj.2229 | Checked in `process-control.md`; feature groups from the paper. |
+| Google SRE book ch. 1 | verified | https://sre.google/sre-book/introduction/ | "roughly 70% of outages are due to changes in a live system". |
+| Amazon 2015 shareholder letter | verified | SEC Exhibit 99.1, 2016 filing | One-way / two-way door wording quoted. |
+| Pokkunuri, Amazon Builders' Library | verified | builder.aws.com (moved from aws.amazon.com/builders-library) | Protocol change is the most common rollback blocker. |
+| GitLab database review guidelines | verified | https://docs.gitlab.com/development/database_review/ | Triggers and checks as listed. |
+| GitLab handbook C1–C4 | unverifiable | handbook.gitlab.com/.../change-management/ | C1 downtime rule and C1/C2 approvals from search excerpts; page body not retrieved; C3/C4 not used. |
+| Claude Code Review docs | verified | https://code.claude.com/docs/en/code-review (+ pull-requests, customize) | Severity markers, base-branch REVIEW.md, neutral check, severity line. |
+| Anthropic Code Review blog, 2026-03-09 | verified | https://claude.com/blog/code-review | 16→54%, 84%/7.5, 31%/0.5, <1% incorrect. Vendor claims. |
+| GitHub Copilot code review docs; 60M blog 2026-03-05 | verified | docs.github.com/en/copilot/concepts/agents/code-review; github.blog | 71% / 29% / 5.1 per review. Vendor claims. |
+| Cursor Bugbot docs; "Bugbot learning" 2026-04-08 | verified | cursor.com/docs/bugbot; cursor.com/blog/bugbot-learning | 78.13% over 50,310 PRs; earlier posts give 70% and 76%. Vendor claims. |
+| CodeRabbit configuration and findings docs | verified | docs.coderabbit.ai | No option named `request_changes_workflow` in the current reference. |
+| GitLab Duo in MRs; review instructions | verified | docs.gitlab.com | `mr-review-instructions.yaml` details from official-page search excerpt, not a full fetch. |
+| Greptile docs; Greptile benchmark (Jul 2025) | corrected | greptile.com/docs; greptile.com/benchmarks | Copilot's per-repo results sum to 26/50 (52%), not the stated 54%. No precision reported. |
+| Qodo blog, 2025-01-29 | verified | qodo.ai/blog/effective-code-suggestions-llms-... | +50% acceptance; method not stated. |
+| Graphite "<3%" / "<5%" unhelpful rate | unverifiable | — | Two first-party pages disagree; neither gives a method. |
+| Li, Zhang, Hassan, arXiv:2507.15003; AIDev arXiv:2602.09185 | verified | arXiv | 456k PRs (v1); 932,791 in dataset paper. |
+| Haider, Zimmermann, MSR 2026 | verified | arXiv:2601.19287 | Theme shares from the paper's table. |
+| Abujadallah et al., MSR 2026 | verified | arXiv:2606.13468 | Categories not ranked by frequency in the abstract. |
+| Ehsani et al., MSR 2026 | verified | arXiv:2601.15195 | "Each failed CI check lowers merge odds ~15%" seen only secondhand; not used. |
+| Peralta et al., MSR 2026 | verified | arXiv:2605.22534 | 35.7 / 31.2 / 33.1%. |
+| Nakashima et al., 2026 | verified | arXiv:2602.04226 | Preprint; 67.9% no explicit feedback. |
+| Sakib et al., KDD 2026 AgenticSE | verified | arXiv:2607.12428 | 38.9%, 82.3%, 99.6%, 81.1%. |
+| Cynthia et al., 2026 | verified | arXiv:2601.20109 | 1,210 merged Python bug-fix PRs. |
+| Meta DRS blog, 2025-08-06 | verified | engineering.fb.com | >10,000 changes in a freeze; no SEV-reduction figure given. |
+| Adams et al., RADAR, 2026 | verified | arXiv:2605.30208 | Preprint; abstract figures; exclusion lists not checked. |
+| GitHub and GitLab platform docs (§8) | verified | docs.github.com; docs.gitlab.com | GitHub CODEOWNERS plan availability not stated on the page read. |
+| CR-Bench, SWR-Bench, AFCRA | verified | arXiv:2611.02566; 2509.01494; 2610.05399 | All preprints. |
+| CodeReviewer (FSE 2022); Too Noisy (MSR 2025); CRScore (NAACL 2025) | verified | arXiv:2203.09095; arXiv:2502.02757; doi:10.18653/v1/2025.naacl-long.457 | ~64% valid comments; 0.54 Spearman. |
+| Martian Code Review Bench | unverifiable | — | Secondary write-ups only. |
+| Stripe, Shopify published review-risk policies | unverifiable | — | No first-party policy found; not cited. |
