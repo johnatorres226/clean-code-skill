@@ -1,3 +1,5 @@
+Roadmap and current layer: `docs/ROADMAP.md`.
+
 ## Agent skills
 
 ### Issue tracker
