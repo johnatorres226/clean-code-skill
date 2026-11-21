@@ -77,7 +77,10 @@ line, for repos that do not want it posting.
   an approval does not start a pipeline, so the `tier` job must be re-run after approval.
 - On GitLab Free, approvals are optional, but the `tier` job can still read them and block.
   Required approval rules need Premium.
-- A missed escalation is the costly error; an extra one is cheap. The reviewer is measured on
+- Favor over-escalating: a missed escalation lets an irreversible change through unjudged. But
+  escalations are not free; too many train seniors to rubber-stamp. Track the escalation rate and
+  the share of escalated PRs approved with no change; a high share means a trigger is too broad.
+- The reviewer is measured on
   seeded defects, false findings on clean PRs, recall on one-way-door PRs (target 100%), an
   adversarial run, and reverts per tier (`docs/research/code-review.md`, synthesis d). If
   human-tier recall drops, the trigger lists widen before anything else changes.
