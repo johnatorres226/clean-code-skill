@@ -79,7 +79,8 @@ def test_codeowners_and_ruleset():
     strict = {**CFG, "pr": {**CFG["pr"], "reviews_required": 1}}
     assert s.ruleset("dev", strict)["rules"][2]["parameters"]["require_last_push_approval"]
     assert dev["required_status_checks"]["strict_required_status_checks_policy"]
-    assert [c["context"] for c in dev["required_status_checks"]["required_status_checks"]] == ["standards"]
+    contexts = [c["context"] for c in dev["required_status_checks"]["required_status_checks"]]
+    assert contexts == ["standards", "tier"]  # tier: human review waits for a senior (ADR 0002)
     reviewed = {**CFG, "review": {"check": "verdict", "app_id": 42}}
     checks = s.branch_rules("rebase", reviewed)[3]["parameters"]["required_status_checks"]
     assert {"context": "verdict", "integration_id": 42} in checks  # reviewer agent's App only
@@ -96,6 +97,59 @@ def test_pr_rules():
     assert s.holdout_problem(["tests/acceptance/test_export.py"], CFG) is None
     assert s.holdout_problem(["src/export.py", "tests/unit/test_export.py"], CFG) is None
     assert "own PR" in s.holdout_problem(["src/export.py", "tests/acceptance/test_export.py"], CFG)
+    # a release (dev -> main) is a promotion: no size, ticket-link or holdout rules (ADR 0003)
+    assert s.pr_problem(CFG, "no-such-base", {"branch": "dev", "body": "", "size": True}) is None
+
+
+def fake_github(responses):
+    """Swap the GitHub API for a dict of path -> JSON; unknown paths fail like a 404."""
+    s.gh_api = lambda path: responses.get(path)
+
+
+REVIEW = "repos/{owner}/{repo}/pulls/7"
+
+
+def test_release_approval_setting():
+    floor = ("agent-merge", [])
+    assert s.release_floor(floor, CFG)[0] == "human-review"  # template default: human
+    tiered = {**CFG, "release": {"approval": "tiered"}}
+    assert s.release_floor(floor, tiered) == floor  # human only if the release hits a trigger
+    assert s.release_floor(("human-review", ["x"]), tiered)[0] == "human-review"
+    assert s.release_floor(("human-review", ["x"]), {**CFG, "release": {"approval": "auto"}})[0] == "agent-merge"
+
+
+def test_senior_approval_of_head_commit():
+    reviews = [
+        {"user": {"login": "ana"}, "state": "APPROVED", "commit_id": "old"},  # stale: before a push
+        {"user": {"login": "bo"}, "state": "APPROVED", "commit_id": "head"},
+        {"user": {"login": "bo"}, "state": "COMMENTED", "commit_id": "head"},  # a comment keeps it
+        {"user": {"login": "cy"}, "state": "APPROVED", "commit_id": "head"},
+        {"user": {"login": "cy"}, "state": "DISMISSED", "commit_id": "head"},  # dismissed: void
+    ]
+    assert s.latest_approvers(reviews, "head") == ["bo"]
+    solo = {**CFG, "roles": {**CFG["roles"], "senior": ["@Bo"]}}
+    fake_github({REVIEW: {"head": {"sha": "head"}}, REVIEW + "/reviews?per_page=100": reviews})
+    assert s.approval_problem("7", solo) is None
+    assert "senior" in s.approval_problem("7", CFG)  # @org/seniors: membership unreadable -> fail closed
+    fake_github({"repos/{owner}/{repo}/pulls/7": {"head": {"sha": "head"}},
+                 REVIEW + "/reviews?per_page=100": reviews,
+                 "orgs/org/teams/seniors/memberships/bo": {"state": "active"}})
+    assert s.approval_problem("7", CFG) is None
+
+
+def test_release_proof_of_review():
+    pulls = "repos/{owner}/{repo}/commits/abc12345/pulls"
+    runs = "repos/{owner}/{repo}/commits/prhead/check-runs?check_name=tier"
+    merged = [{"number": 9, "merged_at": "2026-11-21", "base": {"ref": "dev"}, "head": {"sha": "prhead"}}]
+    fake_github({pulls: merged, runs: {"check_runs": [{"conclusion": "success"}]}})
+    assert s.proof_problem("abc12345", CFG) is None
+    fake_github({pulls: [{**merged[0], "merged_at": None}]})
+    assert "without a merged PR" in s.proof_problem("abc12345", CFG)  # open PR only: unreviewed
+    fake_github({pulls: merged, runs: {"check_runs": [{"conclusion": "failure"}]}})
+    assert "'tier'" in s.proof_problem("abc12345", CFG)
+    fake_github({pulls: merged, runs: {"check_runs": [{"conclusion": "success"}]}})
+    reviewed = {**CFG, "review": {**CFG["review"], "app_id": 42}}
+    assert "'verdict'" in s.proof_problem("abc12345", reviewed)  # verdict required once its App exists
 
 
 def test_tier_floor():

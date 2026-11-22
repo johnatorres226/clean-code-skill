@@ -7,10 +7,15 @@
   pre-push             pre-push: block pushes to protected branches, bad branch names; run check
   range BASE [--no-size] [--branch NAME] [--body-file F]
                        CI: every commit in BASE..HEAD passes message + size; the PR is within
-                       limit, its branch is <type>/<slug> (a protected head = release PR), it
-                       does not mix holdout tests with code, and its body links a ticket
-  tier BASE            lowest review tier BASE...HEAD may take (docs/adr/0002), with the
-                       human-review triggers that set it
+                       limit, its branch is <type>/<slug>, it does not mix holdout tests with
+                       code, and its body links a ticket. A protected head (a release) skips
+                       the PR rules: it is a promotion (docs/adr/0003)
+  tier BASE [--pr N] [--branch NAME]
+                       lowest review tier BASE...HEAD may take (docs/adr/0002), with the
+                       human-review triggers that set it; with --pr, human review fails until
+                       a senior approves the head commit. A release takes [release].approval
+  release BASE         CI, release PRs: every commit came through a merged PR whose review
+                       checks passed, then the [release.gates] run
   guard                Claude Code PreToolUse hook: block bypasses of the above (exit 2)
   codeowners           print CODEOWNERS from [roles]
   ruleset BRANCH       print the GitHub ruleset JSON for a protected branch
@@ -89,8 +94,12 @@ def size_problem(numstat: str, cfg: dict, limit_key: str = "commits") -> str | N
 
 
 def cmd_check(cfg: dict, fast: bool) -> int:
-    for name, command in cfg.get("gates", {}).items():
-        if not command or (fast and name not in FAST_GATES):
+    return run_gates({n: c for n, c in cfg.get("gates", {}).items() if not fast or n in FAST_GATES})
+
+
+def run_gates(gates: dict) -> int:
+    for name, command in gates.items():
+        if not command:
             continue
         print(f"standards: gate {name}: {command}", flush=True)
         # gates resolve `python` to the interpreter running this script
@@ -153,9 +162,18 @@ def holdout_problem(files: list[str], cfg: dict) -> str | None:
     return None
 
 
+def is_release(branch: str | None, cfg: dict) -> bool:
+    """A PR whose head is protected promotes reviewed work (dev -> main); it is not a ticket."""
+    return branch in cfg["branches"]["protected"]
+
+
 def pr_problem(cfg: dict, base: str, opts: dict) -> str | None:
+    if is_release(opts["branch"], cfg):
+        return None  # every commit passed these rules in its ticket PR; `release` checks that
     files = git("diff", "--name-only", f"{base}...HEAD").split()
-    return (opts["branch"] and head_problem(opts["branch"], cfg)) or holdout_problem(files, cfg)         or link_problem(opts["body"], cfg)         or (opts["size"] and size_problem(git("diff", "--numstat", f"{base}...HEAD"), cfg, "pr")) or None
+    return (opts["branch"] and head_problem(opts["branch"], cfg)) or holdout_problem(files, cfg) \
+        or link_problem(opts["body"], cfg) \
+        or (opts["size"] and size_problem(git("diff", "--numstat", f"{base}...HEAD"), cfg, "pr")) or None
 
 
 def cmd_range(cfg: dict, base: str, opts: dict) -> int:
@@ -217,10 +235,85 @@ def tier_floor(files: list[str], added: dict[str, list[str]], cfg: dict) -> tupl
     return "agent-merge", []
 
 
-def cmd_tier(cfg: dict, base: str) -> int:
+def release_floor(floor: tuple[str, list[str]], cfg: dict) -> tuple[str, list[str]]:
+    """Release approval is a project setting (docs/adr/0003): human, tiered or auto. `tiered`
+    sees path and content triggers only; enabling a spec is the reviewer's call to escalate."""
+    approval = cfg.get("release", {}).get("approval", "human")
+    if approval == "human":
+        return "human-review", ["human-review: release — [release].approval = human"]
+    return ("agent-merge", []) if approval == "auto" else floor
+
+
+def cmd_tier(cfg: dict, base: str, opts: dict) -> int:
     files = git("diff", "--name-only", f"{base}...HEAD").split()
-    tier, triggers = tier_floor(files, added_by_file(git("diff", "-U0", "--no-color", f"{base}...HEAD")), cfg)
-    return show("\n".join([*triggers, f"tier: {tier}"]))
+    floor = tier_floor(files, added_by_file(git("diff", "-U0", "--no-color", f"{base}...HEAD")), cfg)
+    tier, triggers = release_floor(floor, cfg) if is_release(opts["branch"], cfg) else floor
+    show("\n".join([*triggers, f"tier: {tier}"]))
+    problem = opts["pr"] and tier == "human-review" and approval_problem(opts["pr"], cfg)
+    return fail(problem) if problem else 0
+
+
+def gh_api(path: str):
+    """GitHub REST GET through the gh CLI ({owner}/{repo} come from the remote); None on any error."""
+    done = subprocess.run(["gh", "api", path], capture_output=True, encoding="utf-8", errors="replace")
+    return json.loads(done.stdout) if done.returncode == 0 else None
+
+
+def latest_approvers(reviews: list[dict], head: str) -> list[str]:
+    """Users whose latest review approves this exact commit; a push or a dismissal voids it."""
+    latest = {r["user"]["login"]: r for r in reviews if r["state"] != "COMMENTED"}
+    return [user for user, r in latest.items() if r["state"] == "APPROVED" and r["commit_id"] == head]
+
+
+def is_senior(login: str, cfg: dict) -> bool:
+    for entry in cfg["roles"]["senior"]:
+        org, _, team = entry.removeprefix("@").partition("/")
+        if not team and org.lower() == login.lower():
+            return True
+        if team and (gh_api(f"orgs/{org}/teams/{team}/memberships/{login}") or {}).get("state") == "active":
+            return True
+    return False
+
+
+def approval_problem(pr: str, cfg: dict) -> str | None:
+    head = (gh_api(f"repos/{{owner}}/{{repo}}/pulls/{pr}") or {}).get("head", {}).get("sha")
+    reviews = gh_api(f"repos/{{owner}}/{{repo}}/pulls/{pr}/reviews?per_page=100") or []
+    if head and any(is_senior(user, cfg) for user in latest_approvers(reviews, head)):
+        return None
+    return "human review: a senior must approve the head commit " \
+        "(team seniors need a workflow token that can read the org)"
+
+
+TIER_CHECK = "tier"  # the CI job that runs `tier --pr`; a required check on protected branches
+
+
+def review_checks(cfg: dict) -> list[str]:
+    review = cfg.get("review", {})
+    return [TIER_CHECK] + ([review["check"]] if review.get("app_id") else [])
+
+
+def check_passed(sha: str, name: str) -> bool:
+    runs = gh_api(f"repos/{{owner}}/{{repo}}/commits/{sha}/check-runs?check_name={name}") or {}
+    return any(run.get("conclusion") == "success" for run in runs.get("check_runs", []))
+
+
+def proof_problem(sha: str, cfg: dict) -> str | None:
+    """Proof of review (docs/adr/0003): the commit came through a merged PR whose checks passed."""
+    integration = cfg["branches"]["integration"]
+    prs = gh_api(f"repos/{{owner}}/{{repo}}/commits/{sha}/pulls") or []
+    pr = next((p for p in prs if p.get("merged_at") and p["base"]["ref"] == integration), None)
+    if pr is None:
+        return f"commit {sha[:8]} reached {integration} without a merged PR"
+    missing = [c for c in review_checks(cfg) if not check_passed(pr["head"]["sha"], c)]
+    return f"commit {sha[:8]}: PR #{pr['number']} has no passing '{missing[0]}' check" if missing else None
+
+
+def cmd_release(cfg: dict, base: str) -> int:
+    for sha in git("rev-list", "--no-merges", f"{base}..HEAD").split():
+        problem = proof_problem(sha, cfg)
+        if problem:
+            return fail(f"release: {problem}")
+    return run_gates(cfg.get("release", {}).get("gates", {}))
 
 
 def segments(command: str):
@@ -285,7 +378,7 @@ ADMIN_ROLE_ID = 5  # not in GitHub's docs; confirm the bypass list reads "Reposi
 
 
 def required_checks(cfg: dict) -> list[dict]:
-    checks = [{"context": "standards", "integration_id": GITHUB_ACTIONS_APP_ID}]
+    checks = [{"context": name, "integration_id": GITHUB_ACTIONS_APP_ID} for name in ("standards", TIER_CHECK)]
     review = cfg.get("review", {})
     if review.get("app_id"):  # the reviewer agent's own App: no other identity can post the verdict
         checks.append({"context": review["check"], "integration_id": review["app_id"]})
@@ -338,7 +431,9 @@ COMMANDS = {
     "range": lambda cfg, args: cmd_range(cfg, args[0], {
         "size": "--no-size" not in args, "branch": flag_value(args, "--branch"),
         "body": read_file(flag_value(args, "--body-file"))}),
-    "tier": lambda cfg, args: cmd_tier(cfg, args[0]),
+    "tier": lambda cfg, args: cmd_tier(cfg, args[0], {
+        "pr": flag_value(args, "--pr"), "branch": flag_value(args, "--branch")}),
+    "release": lambda cfg, args: cmd_release(cfg, args[0]),
     "guard": lambda cfg, args: cmd_guard(cfg, sys.stdin.read()),
     "codeowners": lambda cfg, args: show(codeowners(cfg)),
     "ruleset": lambda cfg, args: show(json.dumps(ruleset(args[0], cfg), indent=2)),
