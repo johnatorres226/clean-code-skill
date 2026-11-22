@@ -1,6 +1,6 @@
 # 2. Review tiers decided by consequence
 
-Date: 2026-11-20. Status: proposed. Supersedes 0001 when accepted.
+Date: 2026-11-20. Status: accepted. Supersedes 0001.
 
 ## Context
 
