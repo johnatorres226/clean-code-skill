@@ -50,24 +50,22 @@ checked; deletions never count toward limits.
 
 ## 4. Review pass — after the PR exists, before merge
 
-Review the PR diff (`gh pr diff`) as a reviewer who did not write it — a fresh subagent or another
-model when available, so the author is not grading their own work. Use the `clean-code` review
-procedure (`../clean-code/references/review-rubric.md`): correctness first, then design, names, tests. A
-dedicated review tool (`/code-review`, pstack `interrogate`, bugbot) replaces this step, not the
-next one.
+Review the PR as a reviewer who did not write it: the `reviewer` agent, or the `verdict` skill
+in a fresh context, so the author is not grading their own work. It returns a verdict line with the
+merge tier and posts its findings. Other review tools (`/code-review`, pstack `interrogate`,
+bugbot) feed it findings to verify; they do not replace it.
 
-Post findings on the PR (`gh pr review --comment` or inline), then: fix every **blocking**
-finding in new atomic commits, answer every non-blocking one (fix, or decline with a reason), and
-re-run `verify`. Unaddressed blocking findings mean not mergeable.
+Then fix every **blocking** finding in new atomic commits, answer every non-blocking one (fix, or
+decline with a reason), and re-run `verify`. Unaddressed blocking findings mean not mergeable.
 
 ## 5. Merge
 
 Mergeable = CI `standards` green + required reviews + no open blocking findings + branch up to
-date with `dev`. Who may merge is tiered (`docs/adr/0001` in this plugin's repo): paths in
-`[roles].auto_merge` merge once `standards` and the reviewer agent's `verdict` check pass; every
-other path needs a code owner's approval. Enable auto-merge (`gh pr merge --auto --rebase`) and
+date with `dev`. Who may merge follows the verdict's tier (`docs/adr/0002` in this plugin's repo):
+**auto-merge** and **agent merge** merge once checks are green and no blocking finding is open;
+**human review** also needs a senior's approval. Enable auto-merge (`gh pr merge --auto --rebase`) and
 move on; never approve your own PR or ask an agent to approve it. pstack: use Autopilot-stack
-when the PR needs a human approval, Autopilot-full only for `auto_merge` paths. Merge with the method in `[branches].merge` (default rebase, which keeps the
+for human review, Autopilot-full otherwise. Merge with the method in `[branches].merge` (default rebase, which keeps the
 atomic commits): `gh pr merge --rebase --delete-branch`. Never force-push or push directly to a
 protected branch — the guard hook blocks it.
 
