@@ -2,10 +2,18 @@ name: standards
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened, labeled, unlabeled]
+  pull_request_review:                 # re-runs `tier` when a senior approves or an approval is dismissed
+    types: [submitted, edited, dismissed]
   push:
     branches: [main, dev]
+permissions:
+  contents: read
+  pull-requests: read                  # reviews, for the tier gate
+  issues: read                         # label events, for size-exempt
+  checks: read                         # ticket PRs' checks, for release proof of review
 jobs:
   standards:
+    if: github.event_name != 'pull_request_review'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,3 +54,26 @@ jobs:
           pip install --quiet skillevaluator
           python tests/test_regress.py
           python tools/regress.py static
+      - name: Release - proof of review and release gates (docs/adr/0003)
+        if: github.event_name == 'pull_request' && github.head_ref == 'dev'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 "$RUNNER_TEMP/standards.py" release origin/${{ github.base_ref }}
+  tier:                                # required check: human review waits for a senior (docs/adr/0002)
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tier floor; human review needs a senior's approval of the head commit
+        env:
+          GH_TOKEN: ${{ github.token }}  # team seniors: a token that can read the org's teams
+          BASE_REF: ${{ github.event.pull_request.base.ref }}  # base_ref is empty on review events
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          git checkout "origin/$BASE_REF" -- standards.toml skills/setup-standards/templates/.githooks/standards.py || echo "no rules on base yet"
+          python3 skills/setup-standards/templates/.githooks/standards.py tier "origin/$BASE_REF" --pr ${{ github.event.pull_request.number }} --branch "$HEAD_REF"
