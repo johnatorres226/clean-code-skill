@@ -63,11 +63,10 @@ def test_guard():
 
 def test_codeowners_and_ruleset():
     owners = s.codeowners(CFG).splitlines()
-    assert owners[1] == "* @org/seniors"  # default: a human approves (ADR 0001)
-    assert "/src/billing/ @org/billing @org/seniors" in owners  # area -> mid tier, seniors too
-    assert "/src/" in owners  # verifiable path: no owner, agents may merge
-    later = owners[owners.index("/src/"):]  # last match wins: guarded + holdout beat auto_merge
-    assert "/standards.toml @org/seniors" in later and "/tests/acceptance/ @org/seniors" in later
+    assert "/standards.toml @org/seniors" in owners  # guarded
+    assert "/tests/acceptance/ @org/seniors" in owners  # holdout
+    assert "**/migrations/** @org/seniors" in owners  # human path; globs stay unanchored
+    assert not any(o.startswith(("* ", "/src/")) for o in owners)  # agent-merge paths: no owner
     dev = {r["type"]: r.get("parameters", {}) for r in s.ruleset("dev", CFG)["rules"]}
     main = {r["type"]: r.get("parameters", {}) for r in s.ruleset("main", CFG)["rules"]}
     assert "required_linear_history" in dev and "required_linear_history" not in main
@@ -99,6 +98,31 @@ def test_pr_rules():
     assert "own PR" in s.holdout_problem(["src/export.py", "tests/acceptance/test_export.py"], CFG)
 
 
+def test_tier_floor():
+    def floor(files, added=None):
+        return s.tier_floor(files, added or {}, CFG)
+    assert floor(["docs/guide.md"], {"docs/guide.md": ["hi"]}) == ("auto-merge", [])
+    assert floor(["docs/guide.md"], {"docs/guide.md": ["x"] * 51})[0] == "agent-merge"  # over the cap
+    assert floor(["src/app.py", "docs/a.md"])[0] == "agent-merge"  # default tier
+    tier, why = floor(["db/migrations/0042.py"])
+    assert tier == "human-review" and why == ["human-review: db/migrations/0042.py — path **/migrations/**"]
+    assert floor(["migrations/0001.py"])[0] == "human-review"  # **/ also matches at the root
+    assert floor(["standards.toml"])[0] == "human-review"  # [roles].guarded
+    assert floor(["tests/acceptance/test_x.py"])[0] == "human-review"  # holdout tests
+    assert floor(["REVIEW.md"])[0] == "human-review"  # human path beats the docs allow-list
+    drop = floor(["src/m.py"], {"src/m.py": ["ALTER TABLE t DROP COLUMN email"]})[1]
+    assert drop == ["human-review: src/m.py — content 'DROP COLUMN'"]
+    assert floor(["src/r.py"], {"src/r.py": ["DELETE FROM users;"]})[0] == "human-review"
+    assert floor(["src/r.py"], {"src/r.py": ["DELETE FROM users WHERE id = 1;"]})[0] == "agent-merge"
+    assert floor(["src/t.py"], {"src/t.py": ["s.truncate(10)"]})[0] == "agent-merge"  # case-sensitive
+
+
+def test_added_by_file():
+    diff = ("diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -0,0 +1 @@\n+new line\n"
+            "diff --git a/y b/y\n--- a/y\n+++ /dev/null\n@@ -1 +0,0 @@\n-gone\n")
+    assert s.added_by_file(diff) == {"x": ["new line"]}
+
+
 def test_hooks_end_to_end():
     """Real git repo: protected-branch commit and bad message are blocked; good flow passes."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -126,6 +150,7 @@ def test_hooks_end_to_end():
         assert std("commit-msg", str(msg)).returncode == 1
         run("git", "commit", "-q", "-m", "feat: add greeting")
         assert std("range", "main").returncode == 0
+        assert "tier: agent-merge" in std("tier", "main").stdout
         assert std("pre-push", stdin="refs/heads/feat/x abc refs/heads/main def\n").returncode == 1
         guard = std("guard", stdin=json.dumps({"tool_input": {"command": "git push origin dev"}}))
         assert guard.returncode == 2
