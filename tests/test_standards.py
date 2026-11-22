@@ -118,7 +118,7 @@ def test_hooks_end_to_end():
 
         run("git", "commit", "-q", "-m", "chore: init")
         run("git", "checkout", "-q", "-b", "feat/x")
-        (Path(tmp) / "a.txt").write_text("hello\n", encoding="utf-8")
+        (Path(tmp) / "a.txt").write_text("hello ←\n", encoding="utf-8")  # byte 0x90: cp1252 cannot decode it
         run("git", "add", "-A")
         assert std("staged").returncode == 0
         msg = Path(tmp) / "MSG"
