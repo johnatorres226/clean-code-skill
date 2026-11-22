@@ -31,7 +31,9 @@ ALWAYS_ALLOWED_MSG = re.compile(r"^(Merge |Revert |fixup! |squash! |amend! )")
 
 
 def git(*args: str) -> str:
-    return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout.strip()
+    # git output is UTF-8; the locale default (cp1252 on Windows) crashes on it
+    return subprocess.run(["git", *args], capture_output=True, encoding="utf-8", errors="replace",
+                          check=True).stdout.strip()
 
 
 def load() -> dict | None:
