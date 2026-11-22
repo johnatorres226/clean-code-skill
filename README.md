@@ -32,6 +32,10 @@ template, branch protection, and a short always-loaded `CLAUDE.md` block.
 | `clean-code` | writing, reviewing, refactoring code | `SKILL.md` ~3.3k; references on demand |
 | `verify` | before claiming done, committing behavior, opening a PR | ~600 tokens |
 | `ship` | branching, committing, PRs, review, merge, release | ~1.2k tokens |
+| `verdict` | reviewing a PR: seven checks, findings, merge tier | ~1.2k; passes on demand |
+
+Agents: `reviewer` (runs `verdict`; never edits, approves or merges) and `tracker` (ticket
+mechanics; never comments or closes).
 
 The only always-loaded cost is the ~120-token `## Standards` block in the governed repo's
 `CLAUDE.md`.
@@ -68,7 +72,9 @@ This plugin does not orchestrate; it is the floor every orchestrator's output mu
 | pstack Babysit, bugbot triage | CI `standards` check; `ship` §4 review findings |
 | pstack Shipping (land the verified stack) | branch protection + `ship` §5 merge, §6 release |
 | mattpocock `to-tickets`, `triage` | one ticket → one `<type>/<slug>` branch → one PR to `dev` |
-| `/code-review`, pstack `interrogate` | satisfies the `ship` §4 review pass |
+| `/code-review`, pstack `interrogate`, bugbot | findings the `verdict` skill verifies one by one |
+
+Review passes adapted from Cursor's Thermos plugin (MIT); credited in `skills/verdict/references/`.
 
 ## Evaluation
 
