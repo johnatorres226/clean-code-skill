@@ -36,9 +36,12 @@ CLAUDE.standards.md                     → appended to CLAUDE.md in step 5
 .claude/settings.json                   → last, in step 6: agents may not edit the enforcement files
 ```
 
-Fill `[roles]` in `standards.toml` (senior team, `guarded` paths, mid-tier `areas`, the
-verifiable `auto_merge` paths agents may merge), `[tests].holdout` (acceptance tests agents may
-not rewrite) and `[review]` (the reviewer agent's GitHub App id, once it exists), then generate
+Fill `[roles]` in `standards.toml` (senior team, `guarded` paths, who reviews each `area`, the
+`auto_merge` allow-list of docs-only paths), `[tests].holdout` (acceptance tests agents may not
+rewrite) and `[review]` (the human-review paths and content patterns for this codebase, and the
+reviewer agent's App id once it exists). Check the floor with `python .githooks/standards.py tier
+<base>` on a few past PRs: a consequential one it rates below human review means a missing
+trigger. Then generate
 `.github/CODEOWNERS` with `python .githooks/standards.py codeowners > .github/CODEOWNERS`.
 
 Then activate the hooks: `git config core.hooksPath .githooks`. This is per-clone, so it also
