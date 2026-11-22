@@ -1,6 +1,6 @@
 # 1. Tiered merge authority for agent pull requests
 
-Date: 2026-11-17. Status: accepted.
+Date: 2026-11-17. Status: superseded by 0002.
 
 ## Context
 
