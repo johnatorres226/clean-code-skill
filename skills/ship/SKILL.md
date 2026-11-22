@@ -71,6 +71,16 @@ protected branch — the guard hook blocks it.
 
 ## 6. Release
 
-Only `dev` merges to `main`, through a PR titled `release: <version or date>` with a merge commit
-(`gh pr merge --merge`), after `verify` passes on `dev`. Tag the merge commit. Hotfix: branch
-`fix/` from `main`, PR to `main`, then merge `main` back into `dev` the same day.
+A release promotes reviewed work (`docs/adr/0003` in this plugin's repo). Only `dev` merges to
+`main`, through a PR titled `release: <version or date>` with a merge commit (`gh pr merge
+--merge`); tag the merge commit.
+
+- **When:** a spec releases when its enabling ticket merges; a standalone ticket right after it
+  merges (ask the `tracker` agent which other merged tickets can join it).
+- **The PR:** exempt from the size, ticket-link and holdout rules. CI checks that every commit came
+  through a reviewed ticket PR and runs `[release.gates]`. Run the `verdict` skill in release mode
+  for the release notes and where tickets interact.
+- **Approval:** `[release].approval` decides whether a senior approves (`human`, `tiered`, `auto`).
+
+Hotfix, only when `dev` cannot be released: branch `fix/` from `main`, PR to `main`, then merge
+`main` back into `dev` the same day.
