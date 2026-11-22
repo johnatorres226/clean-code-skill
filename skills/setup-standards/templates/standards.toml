@@ -32,6 +32,14 @@ auto_merge   = ["docs/", "*.md"]       # auto-merge allow-list: a change touchin
 holdout = ["tests/acceptance/"]        # acceptance tests agents cannot rewrite: senior-owned, and a PR
                                        # changing them may change nothing else
 
+[release]                              # dev -> main is a promotion (docs/adr/0003)
+approval = "human"                     # human: a senior approves every release (products others
+                                       # depend on); tiered: only releases that hit a human-review
+                                       # trigger (team tools); auto: release gates only (personal tools)
+
+[release.gates]                        # run only on release PRs: slow, costly or special-hardware
+                                       # checks, e.g. e2e = "make e2e"; empty = none
+
 [review]                               # tiers by consequence (docs/adr/0002); `standards.py tier`
 check  = "verdict"                     # reviewer agent: a separate App posting a status check
 app_id = 0                             # (never an approval); 0 = not set up, so not required yet
