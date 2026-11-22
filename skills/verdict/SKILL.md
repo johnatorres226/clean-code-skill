@@ -84,13 +84,13 @@ line; a `pass` without evidence is a `concern`.
 **Tier.** Start from the floor; you may only raise it.
 
 - Any finding moves auto-merge to agent merge.
-- Human review when a trigger matches, first match wins, and name it:
+- Human review when a trigger matches; name each one:
   `human-review: <file> — <what> (<why>)`.
-  - **Paths:** migrations and schema, auth and crypto, payments, infrastructure-as-code and deploy
-    config, public API specs, CI, hooks, rules, agent settings, holdout tests, `REVIEW.md`, and
-    anything in `[review]` or `[roles].guarded`.
-  - **Content:** `DROP`, `TRUNCATE`, `DELETE` without `WHERE`, bulk deletes, removed fields,
-    changed wire or storage formats, new dependencies, permission changes.
+  - **Paths and content:** `standards.py tier` reports them from `[review]`. Without it, use:
+    migrations and schema, auth and crypto, payments, infrastructure and deploy config, public API
+    specs, CI, hooks, rules, agent settings, holdout tests, `REVIEW.md`, dependency manifests;
+    `DROP`, `TRUNCATE`, `DELETE` without `WHERE`, bulk deletes.
+  - **Only you can see:** removed fields, changed wire or storage formats, permission changes.
   - **Findings:** a security or data-loss finding, or `tests` found no test reaching changed code.
 
 **Verdict line**, last line of the review, exactly one:
