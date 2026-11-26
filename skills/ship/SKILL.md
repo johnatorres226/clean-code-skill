@@ -17,6 +17,10 @@ order of operations and the judgment the hooks cannot make.
 From the integration branch, as `<type>/<slug>`: `git switch dev && git pull && git switch -c
 feat/csv-export`. One branch, one goal. A second goal is a second branch.
 
+Sessions running in parallel each get their own worktree, so they never share a checkout:
+`git worktree add ../<repo>-<slug> -b feat/<slug> dev` (Claude Code can create one for the
+session). Each worktree needs its own dependency install.
+
 ## 2. Commit — atomic, one concern each
 
 - **One concern per commit:** a refactor, a behavior change, a test, a dependency bump, a
