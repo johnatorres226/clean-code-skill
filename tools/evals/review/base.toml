@@ -1,0 +1,150 @@
+# The project every review case starts from: a tiny shop. Cases overwrite or add files on a
+# feature branch cut from `dev`. tools/review_eval.py also copies in the standards.toml template
+# and .githooks/standards.py, so `standards.py tier` works.
+
+[files]
+"README.md" = '''
+# shop
+
+Order pricing, storage and receipts for a small web shop.
+'''
+
+"pyproject.toml" = '''
+[project]
+name = "shop"
+version = "0.1.0"
+dependencies = []
+'''
+
+"migrations/0001_init.sql" = '''
+CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY, customer TEXT, total_cents INTEGER, notes TEXT);
+'''
+
+"shop/__init__.py" = ""
+
+"shop/pricing.py" = '''
+"""Order pricing. Amounts are integer cents."""
+DISCOUNTS = {"bronze": 0.0, "silver": 0.05, "gold": 0.10}
+
+
+def line_total(price_cents: int, quantity: int) -> int:
+    return price_cents * quantity
+
+
+def order_total(lines: list[tuple[int, int]], tier: str) -> int:
+    subtotal = sum(line_total(price, quantity) for price, quantity in lines)
+    return round(subtotal * (1 - DISCOUNTS[tier]))
+'''
+
+"shop/storage.py" = '''
+"""Order storage in SQLite."""
+import sqlite3
+from pathlib import Path
+
+MIGRATIONS = Path(__file__).parent.parent / "migrations"
+
+
+def connect(path: str) -> sqlite3.Connection:
+    conn = sqlite3.connect(path)
+    for script in sorted(MIGRATIONS.glob("*.sql")):
+        conn.executescript(script.read_text(encoding="utf-8"))
+    return conn
+
+
+def save_order(conn: sqlite3.Connection, order_id: int, customer: str, total_cents: int) -> None:
+    conn.execute("INSERT INTO orders (id, customer, total_cents) VALUES (?, ?, ?)", (order_id, customer, total_cents))
+    conn.commit()
+
+
+def orders_for(conn: sqlite3.Connection, customer: str) -> list[tuple[int, int]]:
+    query = "SELECT id, total_cents FROM orders WHERE customer = ?"
+    return conn.execute(query, (customer,)).fetchall()
+'''
+
+"shop/api.py" = '''
+"""JSON views of orders for the public API."""
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class User:
+    id: int
+    role: str
+
+
+@dataclass(frozen=True)
+class Order:
+    id: int
+    owner: int
+    total_cents: int
+    status: str = "paid"
+
+
+def serialize(order: Order) -> dict:
+    return {"id": order.id, "owner": order.owner, "total_cents": order.total_cents, "status": order.status}
+
+
+def can_refund(user: User, order: Order) -> bool:
+    return user.role == "admin"
+'''
+
+"shop/receipts.py" = '''
+"""Plain-text receipts on disk."""
+from pathlib import Path
+
+RECEIPTS = Path("receipts")
+
+
+def receipt_path(order_id: int) -> Path:
+    return RECEIPTS / f"{order_id}.txt"
+
+
+def write_receipt(order_id: int, text: str) -> None:
+    RECEIPTS.mkdir(exist_ok=True)
+    receipt_path(order_id).write_text(text, encoding="utf-8")
+
+
+def read_receipt(order_id: int) -> str:
+    return receipt_path(order_id).read_text(encoding="utf-8")
+'''
+
+"tests/__init__.py" = ""
+
+"tests/test_shop.py" = '''
+import tempfile
+import unittest
+from pathlib import Path
+
+from shop import receipts
+from shop.api import Order, User, can_refund, serialize
+from shop.pricing import order_total
+from shop.storage import connect, orders_for, save_order
+
+
+class PricingTest(unittest.TestCase):
+    def test_gold_takes_ten_percent_off(self):
+        self.assertEqual(order_total([(1000, 2), (500, 1)], "gold"), 2250)
+
+
+class StorageTest(unittest.TestCase):
+    def test_saved_orders_are_listed_for_their_customer(self):
+        conn = connect(":memory:")
+        save_order(conn, 1, "ana", 500)
+        save_order(conn, 2, "bob", 900)
+        self.assertEqual(orders_for(conn, "ana"), [(1, 500)])
+
+
+class ApiTest(unittest.TestCase):
+    def test_serialize_exposes_total_in_cents(self):
+        self.assertEqual(serialize(Order(7, 3, 1250))["total_cents"], 1250)
+
+    def test_only_admins_refund(self):
+        self.assertFalse(can_refund(User(3, "customer"), Order(7, 3, 1250)))
+
+
+class ReceiptsTest(unittest.TestCase):
+    def test_written_receipt_reads_back(self):
+        receipts.RECEIPTS = Path(tempfile.mkdtemp()) / "receipts"
+        receipts.write_receipt(42, "thanks")
+        self.assertEqual(receipts.read_receipt(42), "thanks")
+'''
