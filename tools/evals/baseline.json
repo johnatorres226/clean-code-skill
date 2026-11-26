@@ -3,22 +3,22 @@
     "clean-code": {
       "skill_tokens": 2245,
       "reference_tokens": 22404,
-      "skillevaluator_score": null
+      "skillevaluator_score": 87.5
     },
     "setup-standards": {
-      "skill_tokens": 705,
+      "skill_tokens": 984,
       "reference_tokens": 0,
-      "skillevaluator_score": null
+      "skillevaluator_score": 93.8
     },
     "ship": {
-      "skill_tokens": 796,
+      "skill_tokens": 946,
       "reference_tokens": 0,
-      "skillevaluator_score": null
+      "skillevaluator_score": 91.2
     },
     "verify": {
       "skill_tokens": 485,
       "reference_tokens": 0,
-      "skillevaluator_score": null
+      "skillevaluator_score": 93.8
     }
   },
   "bench": {
