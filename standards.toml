@@ -22,6 +22,13 @@ reviews_required  = 0                  # solo repo; the standards status check i
 senior       = ["@johnatorres226"]
 guarded      = ["standards.toml", "skills/setup-standards/templates/", "hooks/", ".github/", ".claude/"]
 admin_bypass = true                    # solo repo: the owner cannot approve their own PRs
+auto_merge   = ["docs/research/", "README.md"]  # skills/ and agents/ are the product: agent merge
+
+[review]                               # tiers by consequence (docs/adr/0002)
+check  = "verdict"
+app_id = 0
+auto_merge_max_lines = 50
+human_paths = ["docs/adr/", "GLOSSARY.md", "**/CLAUDE.md"]  # decisions, vocabulary, agent settings
 
 [size]
 exclude = ["*.lock", "*-lock.json", "results/*", "tools/evals/benchmarks/*"]
