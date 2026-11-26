@@ -401,7 +401,11 @@ def required_checks(cfg: dict) -> list[dict]:
     return checks
 
 
-def branch_rules(method: str, cfg: dict) -> list[dict]:
+def branch_rules(branch: str, cfg: dict) -> list[dict]:
+    """Integration: rebase + linear, up to date. Release: merge commit, so its head (the linear
+    integration branch) can never take release merges back and must not be asked to be up to date."""
+    integration = branch == cfg["branches"]["integration"]
+    method = cfg["branches"]["merge"] if integration else "merge"
     rules = [{"type": "deletion"}, {"type": "non_fast_forward"},
              {"type": "pull_request", "parameters": {
                  "required_approving_review_count": cfg["pr"]["reviews_required"],
@@ -411,19 +415,18 @@ def branch_rules(method: str, cfg: dict) -> list[dict]:
                  "required_review_thread_resolution": True,
                  "allowed_merge_methods": [method]}},
              {"type": "required_status_checks", "parameters": {
-                 "strict_required_status_checks_policy": True,
+                 "strict_required_status_checks_policy": integration,
                  "required_status_checks": required_checks(cfg)}}]
     return rules + ([{"type": "required_linear_history"}] if method == "rebase" else [])
 
 
 def ruleset(branch: str, cfg: dict) -> dict:
-    """GitHub ruleset for one protected branch (integration: rebase + linear; release: merge)."""
-    method = cfg["branches"]["merge"] if branch == cfg["branches"]["integration"] else "merge"
+    """GitHub ruleset for one protected branch."""
     bypass = [{"actor_id": ADMIN_ROLE_ID, "actor_type": "RepositoryRole", "bypass_mode": "pull_request"}]
     return {"name": f"standards-{branch}", "target": "branch", "enforcement": "active",
             "conditions": {"ref_name": {"include": [f"refs/heads/{branch}"], "exclude": []}},
             "bypass_actors": bypass if cfg["roles"].get("admin_bypass") else [],
-            "rules": branch_rules(method, cfg)}
+            "rules": branch_rules(branch, cfg)}
 
 
 def flag_value(args: list[str], flag: str) -> str | None:

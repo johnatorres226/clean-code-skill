@@ -82,10 +82,12 @@ def test_codeowners_and_ruleset():
     strict = {**CFG, "pr": {**CFG["pr"], "reviews_required": 1}}
     assert s.ruleset("dev", strict)["rules"][2]["parameters"]["require_last_push_approval"]
     assert dev["required_status_checks"]["strict_required_status_checks_policy"]
+    # release: main's merge commits never reach a linear dev, so "up to date" would block every release
+    assert not main["required_status_checks"]["strict_required_status_checks_policy"]
     contexts = [c["context"] for c in dev["required_status_checks"]["required_status_checks"]]
     assert contexts == ["standards", "tier"]  # tier: human review waits for a senior (ADR 0002)
     reviewed = {**CFG, "review": {"check": "verdict", "app_id": 42}}
-    checks = s.branch_rules("rebase", reviewed)[3]["parameters"]["required_status_checks"]
+    checks = s.branch_rules("dev", reviewed)[3]["parameters"]["required_status_checks"]
     assert {"context": "verdict", "integration_id": 42} in checks  # reviewer agent's App only
     assert s.ruleset("dev", CFG)["bypass_actors"] == []  # template default: nobody bypasses
     solo = {**CFG, "roles": {**CFG["roles"], "admin_bypass": True}}
