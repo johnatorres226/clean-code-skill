@@ -25,8 +25,9 @@ senior       = ["@org/seniors"]        # own the human-review paths and approve 
 guarded      = ["standards.toml", ".githooks/", ".github/", ".claude/"]  # the enforcement surface:
                                        # always human review
 admin_bypass = false                   # true only on a solo repo: admin merges own PRs (PR-only, logged)
-auto_merge   = ["docs/", "*.md"]       # auto-merge allow-list: a change touching only these, under
-                                       # [review].auto_merge_max_lines, merges on a clean verdict
+auto_merge   = ["docs/research/", "CHANGELOG.md"]  # auto-merge allow-list: a change touching only
+                                       # these, under [review].auto_merge_max_lines, merges on a clean
+                                       # verdict. Personal and team tools: ["docs/", "*.md"]
 
 [tests]
 holdout = ["tests/acceptance/"]        # acceptance tests agents cannot rewrite: senior-owned, and a PR
@@ -43,13 +44,14 @@ approval = "human"                     # human: a senior approves every release 
 [review]                               # tiers by consequence (docs/adr/0002); `standards.py tier`
 check  = "verdict"                     # reviewer agent: a separate App posting a status check
 app_id = 0                             # (never an approval); 0 = not set up, so not required yet
-auto_merge_max_lines = 50
+auto_merge_max_lines = 50              # personal and team tools: 1000 (setup-standards)
 human_paths = [                        # human review; guarded paths and holdout tests always count.
   "**/migrations/**", "*.sql", "db/schema*",                  # schema and data
   "**/auth/**", "**/crypto/**", "**/payments/**", "**/billing/**",
   "*.tf", "k8s/", "helm/", "deploy/", ".gitlab-ci.yml",       # infrastructure and deploy
   "*.proto", "**/openapi.*",                                  # public API specs
   "REVIEW.md", "**/CLAUDE.md", "**/AGENTS.md",                # review rules, agent settings
+  "docs/adr/", "GLOSSARY.md",                                 # decisions, vocabulary
   "**/package.json", "**/pyproject.toml", "**/requirements*.txt",  # new dependencies
   "**/go.mod", "**/Cargo.toml", "**/Gemfile",
 ]                                      # "dir/" = prefix; with a wildcard = glob, "**/" = any depth
