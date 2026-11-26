@@ -6,14 +6,19 @@
       "skillevaluator_score": 87.5
     },
     "setup-standards": {
-      "skill_tokens": 984,
+      "skill_tokens": 1030,
       "reference_tokens": 0,
       "skillevaluator_score": 93.8
     },
     "ship": {
-      "skill_tokens": 946,
+      "skill_tokens": 1048,
       "reference_tokens": 0,
       "skillevaluator_score": 91.2
+    },
+    "verdict": {
+      "skill_tokens": 1246,
+      "reference_tokens": 1179,
+      "skillevaluator_score": 93.8
     },
     "verify": {
       "skill_tokens": 485,
