@@ -1,8 +1,8 @@
 {
   "static": {
     "clean-code": {
-      "skill_tokens": 2245,
-      "reference_tokens": 22404,
+      "skill_tokens": 2258,
+      "reference_tokens": 23226,
       "skillevaluator_score": 87.5
     },
     "setup-standards": {
@@ -16,8 +16,8 @@
       "skillevaluator_score": 91.2
     },
     "verdict": {
-      "skill_tokens": 1246,
-      "reference_tokens": 1179,
+      "skill_tokens": 1269,
+      "reference_tokens": 1681,
       "skillevaluator_score": 93.8
     },
     "verify": {
