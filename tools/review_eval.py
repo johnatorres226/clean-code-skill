@@ -70,7 +70,7 @@ def build(case: dict) -> Path:
     sh(work, "git", "switch", "-q", "-c", "dev")
     sh(work, "git", "switch", "-q", "-c", f"feat/{case['id']}")
     write_files(work, case["files"])
-    commit(work, f"feat: {case['ticket'][:60]}")
+    commit(work, case.get("commit", f"feat: {case['ticket'][:60]}"))
     return work
 
 
