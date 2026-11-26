@@ -150,6 +150,15 @@ def test_release_proof_of_review():
     fake_github({pulls: merged, runs: {"check_runs": [{"conclusion": "success"}]}})
     reviewed = {**CFG, "review": {**CFG["review"], "app_id": 42}}
     assert "'verdict'" in s.proof_problem("abc12345", reviewed)  # verdict required once its App exists
+    # solo repo: an admin-bypass merge by a senior is the review (they cannot approve their own PR)
+    failed = {pulls: merged, runs: {"check_runs": [{"conclusion": "failure"}]},
+              "repos/{owner}/{repo}/pulls/9": {"merged_by": {"login": "Bo"}}}
+    solo = {**CFG, "roles": {**CFG["roles"], "senior": ["@bo"], "admin_bypass": True}}
+    fake_github(failed)
+    assert s.proof_problem("abc12345", solo) is None
+    assert "'tier'" in s.proof_problem("abc12345", {**solo, "roles": {**solo["roles"], "admin_bypass": False}})
+    fake_github({**failed, "repos/{owner}/{repo}/pulls/9": {"merged_by": {"login": "eve"}}})
+    assert "'tier'" in s.proof_problem("abc12345", solo)  # merged by a non-senior: no proof
 
 
 def test_tier_floor():
