@@ -1,7 +1,7 @@
 # Roadmap
 
 Where this plugin is going and in what order. Live status (what is open, blocked or done) lives on
-the tracker, in the map; this file changes only when the direction does. Decisions go in
+the tracker, in the map (#15); this file changes only when the direction does. Decisions go in
 `docs/adr/`, terms in `GLOSSARY.md`.
 
 ## Destination
@@ -22,7 +22,7 @@ falling back to its own.
 
 | # | Layer | What it gives the agent |
 |---|---|---|
-| L0 | Environment contract | `standards.toml`, hooks, CI `standards` check, `clean-code`, `verify`, `ship`. Shipped in v2.1. |
+| L0 | Environment contract | `standards.toml`, hooks, CI `standards` check, `clean-code`, `verify`, `ship` |
 | L3 | Tracker | An agent that keeps the tracker in order, so the orchestrator spends no context on it |
 | L1 | Review, merge and release | Consequence tiers (ADR 0002), the reviewer agent and `verdict` rubric, release rules (ADR 0003) |
 | L2 | Intake | A rubric the agent uses to confirm it understands the request before building |
@@ -42,29 +42,27 @@ check.
   closes a ticket (merged PRs close their own tickets; a stale ticket is flagged, not closed).
 - Follows the platform adapter doc (`docs/agents/issue-tracker.md`), never `gh` from memory.
 - Runs on the cheapest model and returns at most three lines.
-- First job: create the map and one entry per layer. Tickets are created only for the layer being
-  worked, a few at a time.
+- The map holds one entry per layer. Tickets are created only for the layer being worked, a few at
+  a time.
 
 Agents sign every comment with their role in brackets on the first line (`[implementer]`,
 `[reviewer]`); an untagged comment is a human's.
 
 ## L1: review, merge and release
 
-Done: research (`docs/research/code-review.md`), ADR 0002, ADR 0003.
+Grounded in `docs/research/code-review.md`, ADR 0002 and ADR 0003.
 
-Next:
-1. Reviewer agent, modeled on Cursor's Thermos plugin (MIT, credited): a correctness-and-security
-   pass and a quality pass in parallel, then a synthesis.
-2. `verdict` skill: seven checks (intent, consequence, correctness, security, tests,
-   maintainability, docs), each `pass | concern | fail` with evidence, and one machine-readable
-   verdict line. Runs its own full hunt, or verifies other reviewers' findings one by one.
-3. `standards.py tier` and the `[review]` config, test-first.
-4. Release rules in `standards.py`: recognise release PRs, check proof of review and whole specs,
-   run the release-only check list, honour the release approval setting.
-5. Validation: seeded defects, false findings on clean PRs, one-way-door recall, an adversarial
-   run, reverts per tier. Harness built (`tools/review_eval.py`, 18 synthetic cases). Opus, 2026-11-25:
-   all three gates pass (one-way doors 5/5, clean blocked 0/5, adversarial escapes 0/3), defects
-   found 5/5, $6.55. Haiku baseline pending. Reverts per tier need real PR history.
+- Reviewer agent, modeled on Cursor's Thermos plugin (MIT, credited): three hunting passes in
+  fresh contexts (correctness and security, maintainability, comments), then a synthesis.
+- `verdict` skill: seven checks (intent, consequence, correctness, security, tests,
+  maintainability, docs), each `pass | concern | fail` with evidence, and one machine-readable
+  verdict line. Runs its own hunt, or verifies other reviewers' findings one by one.
+- `standards.py tier`: the floor the reviewer may only raise; `[review]` names the human triggers.
+- Release rules: proof that every commit came through a checked ticket PR, the release-only check
+  list, and the release approval setting.
+- Validation (`tools/review_eval.py`, 18 synthetic cases) gates on one-way-door recall, clean PRs
+  blocked and adversarial escapes. Opus is the production reviewer; Haiku also passes, with no
+  margin on clean PRs blocked. Reverts per tier need real PR history.
 
 ## L2: intake (sketch)
 
@@ -86,7 +84,7 @@ understanding, `to-spec` and `to-tickets` for the artifacts, `wayfinder` for mul
 
 | Framework | What we use | How |
 |---|---|---|
-| Thermos (cursor/plugins) | Review depth rules and the two-pass structure | Copy and adapt, with credit |
+| Thermos (cursor/plugins) | Review depth rules and the multi-pass structure | Copy and adapt, with credit |
 | pstack (cursor/plugins) | Orchestration, `interrogate`, adversarial review | Run alongside |
 | mattpocock/skills | `grill-with-docs`, `to-spec`, `to-tickets`, `wayfinder`, `triage`, `retro`, `codebase-design`, `improve-codebase-architecture` | Detect and hand off |
 
@@ -97,4 +95,3 @@ The mode (L4) has to tell the user when to type them, or ship its own fallback.
 
 - A/A replicate of the v2.1 evaluation and multi-file tasks: waiting for a machine with more
   memory.
-- Pushing to `dev`: waiting for `gh auth refresh -h github.com -s workflow`.
