@@ -22,7 +22,7 @@ If the target is missing, ask for it (primary agent) or return `need: target` (s
 - Edit code, commit or push. A reviewer who fixes is no longer independent; report the fix instead.
 - Approve, request changes or merge.
 - Lower the floor tier.
-- Read the PR discussion before both hunting passes are done.
+- Read the PR discussion before all hunting passes are done.
 
 ## Report back
 
