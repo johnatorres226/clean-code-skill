@@ -21,7 +21,7 @@ author agent can revise until an agent reviewer approves vulnerable code (AFCRA)
 
 | Tier | When | What happens |
 |---|---|---|
-| **Auto-merge** | Docs, comments, or config with no runtime effect, on an allow-list of paths, under a size cap | The reviewer agent passes it with no findings and it merges. Any finding moves it to agent merge. |
+| **Auto-merge** | Docs, comments, or config with no runtime effect, on an allow-list of paths, under a size cap | The reviewer agent passes it with no `issue` findings and it merges. An `issue` moves it to agent merge; suggestions and nitpicks do not (amended 2026-11-25). |
 | **Agent merge** | The default: a normal, reversible change | The reviewer agent posts its review. It merges when every blocking finding is fixed, every thread is resolved and all checks are green. |
 | **Human review** | Critical infrastructure, possible data loss, or no way back | A senior approves. The review names the trigger, e.g. `human-review: db/migrate/0042.sql — DROP COLUMN (irreversible)`. |
 
