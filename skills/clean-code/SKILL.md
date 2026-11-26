@@ -31,7 +31,7 @@ Examples in references are language-neutral pseudocode; the repo's linter owns l
 | Classes, modules, cohesion, dependencies | `references/classes-and-design.md` | 2,200 |
 | Writing tests, doing TDD | `references/tdd-and-tests.md` | 2,800 |
 | Cleaning existing code | `references/refactoring.md` | 2,700 |
-| Running a formal review | `references/review-rubric.md` | 1,400 |
+| Running a formal review, or scanning code for a refactor plan | `references/review-rubric.md` | 2,100 |
 | Looking up a smell | `references/smells-catalog.md` | **grep it — see Step 3** |
 
 Never read the smell catalog whole: `grep -A4 -E '^\*\*(G25|F3)' references/smells-catalog.md`
