@@ -6,12 +6,12 @@
       "skillevaluator_score": 87.5
     },
     "setup-standards": {
-      "skill_tokens": 1181,
+      "skill_tokens": 1369,
       "reference_tokens": 0,
       "skillevaluator_score": 93.8
     },
     "ship": {
-      "skill_tokens": 1048,
+      "skill_tokens": 1234,
       "reference_tokens": 0,
       "skillevaluator_score": 91.2
     },
