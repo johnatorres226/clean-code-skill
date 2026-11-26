@@ -102,6 +102,7 @@ Security settings, same confirmation (push protection is free on public repos):
 ```bash
 gh api -X PATCH repos/{owner}/{repo} -f 'security_and_analysis[secret_scanning][status]=enabled' \
   -f 'security_and_analysis[secret_scanning_push_protection][status]=enabled'
+gh api -X PUT repos/{owner}/{repo}/vulnerability-alerts             # Dependabot alerts
 ```
 
 If `gh` lacks admin rights, print the commands for the owner instead. Agents run with a GitHub
