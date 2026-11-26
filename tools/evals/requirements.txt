@@ -1,0 +1,4 @@
+radon==6.*
+ruff==0.17.*
+cognitive_complexity==1.*
+skillevaluator==0.9.*

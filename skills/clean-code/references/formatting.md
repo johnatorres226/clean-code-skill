@@ -1,11 +1,11 @@
 # Formatting
 
-Formatting is communication. It is also the cheapest kind of quality to obtain, because a tool
-can do it — which means there is no excuse for a codebase without one, and no excuse for humans
-arguing about it in review.
+Formatting is communication. It is also the cheapest kind of quality to obtain, because a tool can
+do it — so there is no excuse for a codebase without one, and no excuse for humans arguing about it
+in review.
 
 **The rule that matters most: agree once, automate it, and never discuss it again.** A consistent
-"wrong" style beats an inconsistent "right" one. Put the formatter in a pre-commit hook and in CI.
+"wrong" style beats an inconsistent "right" one. The formatter runs in a pre-commit hook and in CI.
 
 ## Contents
 
@@ -17,222 +17,120 @@ arguing about it in review.
 
 ## Automate first
 
-| Language | Formatter | Linter | Also worth having |
-|---|---|---|---|
-| C / C++ | `clang-format` | `clang-tidy`, `cppcheck` | `include-what-you-use`, sanitizers |
-| Java | `google-java-format` / `spotless` | Checkstyle, SpotBugs, Error Prone | PMD |
-| Python | `ruff format` (or `black`) | `ruff` (or flake8+pylint) | `mypy`, `pyright` |
-
-`scripts/setup_toolchain.sh` drops working configs from `assets/` into a project and prints the
-pre-commit wiring. Run it once per repo.
+Every repo declares one formatter and one linter per language, with config checked in, wired into
+pre-commit and CI. The repo's standards config names them; the tools — not this document — are the
+authority on casing, spacing, brace style, and import order. Everything below is what a formatter
+*cannot* decide for you, plus the defaults to configure it with.
 
 ## Vertical formatting
 
-**The newspaper metaphor.** A source file should read like a news article: the name at the top
-tells you whether you're in the right place, the first section gives the high-level story, and
-detail increases as you descend. You should be able to stop reading at any point and have a
-coherent, complete-at-that-level understanding.
+**The newspaper metaphor.** A source file reads like a news article: the name tells you whether
+you're in the right place, the top gives the high-level story, and detail increases as you descend.
+You can stop at any point and have a coherent picture at that level.
 
 **File length.** Most files should be a few hundred lines; 500 is a reasonable ceiling and 1000 is
-a smell. Small files are easier to name, navigate, review, and merge. A large file is almost
-always several concepts that have not been separated yet.
+a smell. A large file is almost always several concepts not yet separated.
 
 **Vertical openness between concepts.** Blank lines separate thoughts. Each group of lines that
-forms one idea gets one blank line after it. Removing them makes the code a wall.
+forms one idea gets one blank line after it.
 
-```python
-package_name_pattern = re.compile(r"^[a-z][a-z0-9_]*$")
+```
+function parse(text):
+    header = parse_header(text)
+    validate_version(header.version)
 
-def parse(text: str) -> Manifest:
-    header = _parse_header(text)
-    _validate_version(header.version)
-
-    entries = [_parse_entry(line) for line in _body_lines(text)]
-    _reject_duplicates(entries)
+    entries = [parse_entry(line) for line in body_lines(text)]
+    reject_duplicates(entries)
 
     return Manifest(header, entries)
 ```
 
 **Vertical density implies association.** Lines that belong together stay together — no stray
-blank lines or comments splitting a tightly coupled group. Density and openness are two halves of
-the same signal: *closeness means relatedness.*
+blank lines or comments splitting a tightly coupled group. *Closeness means relatedness.*
 
 **Vertical distance: declare close to use.**
 
-- **Local variables** at the top of their first use, as close as the language allows. In C89 they
-  had to go at the top of the block; in C99+, C++, Java, and Python, put them where they're used.
-- **Instance variables** at the top of the class (Java/C++ convention) — one well-known place, so
-  readers never hunt.
+- **Local variables** at their first use, as close as the language allows.
+- **Fields / instance state** in one well-known place at the top of the type.
 - **Loop control variables** inside the loop statement.
-- **Dependent functions**: the caller *above* the callee, so the reader flows downward. This
-  is the stepdown rule from `functions.md`, expressed as layout.
-- **Conceptually affine functions** (`assertTrue`/`assertFalse`, the four overloads of `write`)
-  stay adjacent even without a call relationship.
+- **Dependent functions**: caller *above* callee, so the reader flows downward (the stepdown rule
+  from `functions.md`, expressed as layout).
+- **Conceptually affine functions** (`assert_true`/`assert_false`, overloads of `write`) stay
+  adjacent even without a call relationship.
 
-Vertical distance is a real cost: if a reader has to scroll or jump files to understand one
-function, that function's dependencies are too far away.
+If a reader has to scroll or jump files to understand one function, its dependencies are too far
+away.
 
-**Vertical ordering within a file** — a defensible default:
+**Vertical ordering within a file** — a defensible default; readers care about the interface
+first:
 
 ```
 1. License / file-level doc comment
-2. Includes / imports (grouped, ordered)
+2. Imports (grouped, ordered)
 3. Constants and type declarations
 4. Public entry points, in order of importance
 5. Private helpers, in stepdown order beneath their callers
 ```
 
-Java convention places all fields at the top; C++ convention places `public:` before `private:`
-for the same reason — readers care about the interface first. Python has no enforced order, so
-put module constants first, then public functions/classes, then private (`_`-prefixed) helpers.
-
 ## Horizontal formatting
 
-**Line length.** Pick a limit and enforce it. Common choices: 80 (C/C++ traditional, forces
-smaller functions), 100 (Java/Python pragmatic middle, and Google's Java default), 120 (upper
-bound; beyond this side-by-side diffs and code review become painful). Never rely on wrapping.
+**Line length.** Pick a limit and enforce it: 80 (forces smaller functions), 100 (pragmatic
+middle), or 120 (upper bound; beyond it side-by-side diffs and review get painful). Never rely on
+wrapping. A line that will not fit is usually doing too much — extract a named intermediate rather
+than adding an awkward continuation.
 
-A line that will not fit is usually a line doing too much. Break it by extracting a named
-intermediate, not by adding a continuation with awkward alignment.
+**Horizontal openness.** Use spaces to show which operators bind tighter: `b*b - 4*a*c` style
+grouping, or uniform spacing — whichever the formatter enforces — but never spacing that lies about
+precedence.
 
-**Horizontal openness.** Use spaces to show which operators bind tighter and to separate distinct
-things.
+**Do not align columns artificially.** Aligning declarations looks tidy until one name grows and
+the formatter reflows twenty lines, wrecking diff and blame. Let the formatter decide.
 
-```java
-// assignment operator gets space (separates two sides);
-// function name and its paren do not (they're one thing)
-int lineSize = line.length();
-totalChars  += lineSize;
+**Indentation reveals scope.** Never collapse a scope onto one line to save space
+(`if level > MAX: level = MAX` on one line hides a scope). Spaces vs. tabs matters far less than
+consistency; follow the ecosystem and never mix.
 
-// multiplication binds tighter than addition — show it
-return b * b - 4 * a * c;
-```
+**Braces (where the language has them):** use them even for one-line bodies. The cost is one line;
+the benefit is that a second statement added later cannot silently escape the conditional — this
+has caused shipped security bugs.
 
-**Do not align columns artificially.** Aligning a block of declarations or assignments looks tidy
-until one name grows and the formatter reflows twenty lines, wrecking your diff and blame. Let
-the formatter decide.
-
-```java
-// avoid
-private   Socket        socket;
-private   InputStream   input;
-private   OutputStream  output;
-
-// prefer
-private Socket socket;
-private InputStream input;
-private OutputStream output;
-```
-
-**Indentation.** Indent to reveal scope; never collapse a scope onto one line to save space.
-Spaces vs. tabs matters far less than consistency — but pick per-ecosystem: 4 spaces for Python
-(PEP 8, non-negotiable), 4 for Java, 2 or 4 for C/C++ (project choice). Never mix.
-
-```java
-// avoid — a scope hidden on one line
-if (level > MAX) { level = MAX; }
-while (!done) doWork();
-
-// prefer
-if (level > MAX) {
-    level = MAX;
-}
-```
-
-**Braces.** Use them even for one-line bodies. The cost is one line; the benefit is that adding a
-second statement later cannot silently escape the conditional. (This is not hypothetical — it has
-caused shipped security bugs.)
-
-**Dummy scopes.** Avoid empty loop bodies; if you truly need one, make the emptiness loud:
-```c
-while (dis.read(buf, 0, readBufferSize) != -1)
-    ;   /* intentionally empty: draining the stream */
-```
+**Empty bodies** should be loud: an explicit `pass` / `;` with a comment saying the emptiness is
+intentional.
 
 ## Team rules over personal rules
 
-A codebase should look as if one careful person wrote it, even with twenty authors. That means
-the *team's* choices override yours: brace placement, import ordering, comment style, naming
-casing, test layout.
+A codebase should look as if one careful person wrote it, even with twenty authors. The *team's*
+choices override yours: brace placement, import order, comment style, casing, test layout.
 
-Encode the decisions in machine-readable config checked into the repo — `.clang-format`,
-`.editorconfig`, `checkstyle.xml`, `pyproject.toml` — so the rules travel with the code and new
-contributors inherit them automatically. Then review can be about design instead of whitespace.
+Encode those decisions in machine-readable config checked into the repo (formatter config,
+`.editorconfig`, linter config) so the rules travel with the code and new contributors inherit them
+automatically. Then review is about design instead of whitespace.
 
-When editing a file whose local style differs from the project standard, match the file, not the
-standard, unless you are reformatting the whole file in a dedicated commit. A half-converted file
-is worse than either style.
+When editing a file whose local style differs from the project standard, match the file, unless
+you are reformatting the whole file in a dedicated commit. A half-converted file is worse than
+either style.
 
 ## File and project organization
 
-**One primary concept per file.** In Java this is enforced (one public class per file); in C++ and
-Python it is a discipline. A file named `utils.py` that has grown to 900 lines is several missing
-modules.
+**One primary concept per file.** A file named `utils` that has grown to 900 lines is several
+missing modules.
 
-**Header/implementation split (C/C++).** The header is the contract and should be readable on its
-own: include what it needs, expose nothing it doesn't have to, forward-declare rather than include
-where possible, and use include guards or `#pragma once` consistently.
+**The public interface is the contract and must read on its own** — whether that is a header, an
+interface file, or the top of a module. Expose nothing it doesn't have to; depend on declarations,
+not implementations, where the language allows.
 
-```cpp
-// ring_buffer.hpp — the contract, no implementation noise
-#pragma once
-#include <cstddef>
-#include <cstdint>
-#include <optional>
+**Import ordering.** Group, separate with blank lines, fixed order — and let the tool sort it:
 
-namespace io {
-
-/// Fixed-capacity single-producer single-consumer byte buffer.
-class RingBuffer {
-public:
-    explicit RingBuffer(std::size_t capacity);
-
-    /// Returns false if the buffer is full; never blocks.
-    bool push(std::uint8_t byte) noexcept;
-
-    /// Returns std::nullopt if empty; never blocks.
-    std::optional<std::uint8_t> pop() noexcept;
-
-    std::size_t size() const noexcept;
-
-private:
-    std::vector<std::uint8_t> storage_;
-    std::size_t head_ = 0;
-    std::size_t tail_ = 0;
-};
-
-}  // namespace io
+```
+1. this file's own interface (where the language has one — proves it is self-contained)
+2. standard library
+3. third-party
+4. this project
 ```
 
-**Import/include ordering.** Group and separate with blank lines, in a fixed order:
-
-```cpp
-#include "ring_buffer.hpp"   // 1. this file's own header, first — proves it self-includes
-
-#include <cstdint>           // 2. C++ standard library
-#include <vector>
-
-#include <fmt/format.h>      // 3. third-party
-
-#include "io/log.hpp"        // 4. this project
-```
-
-```python
-import os                    # 1. standard library
-import sys
-
-import numpy as np           # 2. third-party
-import requests
-
-from myapp.billing import Invoice   # 3. first-party
-```
-
-Let the tool do it: `clang-format`'s `IncludeCategories`, `ruff`'s isort rules, Checkstyle's
-`ImportOrder`. All three are in `assets/`.
-
-**Test file placement.** Mirror the source tree so the test for `billing/invoice.py` is at
-`tests/billing/test_invoice.py` (or `src/test/java/.../InvoiceTest.java`). Predictable location
-means tests actually get found and updated.
+**Test file placement.** Mirror the source tree so the test for `billing/invoice` lives at
+`tests/billing/invoice_test` (or the ecosystem's equivalent). Predictable location means tests get
+found and updated.
 
 ## Related heuristics
 

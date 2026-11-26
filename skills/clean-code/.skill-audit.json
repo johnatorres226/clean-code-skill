@@ -1,24 +1,15 @@
 {
-  "_comment": "Declared exceptions to skill_audit.py defaults. Each is a decision, not a threshold tweak — the justification is the point, and it is reviewable in the diff.",
-
-  "skill_md_budget": 3700,
-  "_skill_md_budget_why": "Default is 3000. The triage protocol (~690 tokens) and the four escalation triggers (~180 tokens) live in the always-loaded tier because they are what prevents naive multi-file loading. They cost ~870 tokens once per conversation and save ~4,000 on a typical two-reference task, and more on tasks that would otherwise pull four files. Raising the budget is the correct trade; trimming them would restore the bloat they exist to prevent. Revisit if SKILL.md exceeds 3700.",
-
+  "_comment": "Declared exceptions to skill_audit.py defaults. Each is a decision, not a threshold tweak \u2014 the justification is the point, and it is reviewable in the diff.",
+  "skill_md_budget": 2500,
+  "_skill_md_budget_why": "Default is 3000; held at 2500 to lock in the v2.1 trim (3,269 -> 2,245 tokens). The function and comment procedures stay in the always-loaded tier because every code-writing task needs them.",
   "core_sections": [
     "writing a function",
     "writing a comment",
-    "the four qualities",
-    "how to use this skill"
+    "load only what the task needs"
   ],
-  "_core_sections_why": "These are not summaries of a reference — they are always-needed content that belongs in the always-loaded tier. The function and comment procedures apply to every code-writing task, so handing off to functions.md/comments.md for the basic procedure would guarantee a load on every task. They deliberately have no escalation trigger.",
-
+  "_core_sections_why": "These are not summaries of a reference \u2014 they are always-needed content that belongs in the always-loaded tier. The function and comment procedures apply to every code-writing task, so handing off to functions.md/comments.md for the basic procedure would guarantee a load on every task. They deliberately have no escalation trigger.",
   "partial_access_files": [
     "smells-catalog.md"
   ],
-  "_partial_access_why": "5,145 tokens, but it is a lookup table, not prose. SKILL.md Step 3 documents grep-by-ID (~60 tokens per entry) and index-only browse (~630 tokens). Its total size is not what a task actually pays. Splitting it would break the grep-one-file access pattern that makes it cheap.",
-
-  "deliberate_duplication": [
-    ["lang-c.md", "lang-cpp.md"]
-  ],
-  "_deliberate_duplication_why": "The shared-rules block (~155 words: const correctness, fixed-width types, typed enums, warnings-as-errors, sanitizers) is copied into both files so a single-language task never loads both. Accepted drift risk: if one copy is edited, the other must be updated in the same commit. Kept deliberately short to bound that risk."
+  "_partial_access_why": "~4,800 tokens, but it is a lookup table, not prose. SKILL.md documents grep-by-ID (~60 tokens per entry) and index-only browse. Its total size is not what a task actually pays."
 }

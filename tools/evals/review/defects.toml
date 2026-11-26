@@ -1,0 +1,190 @@
+# Seeded defects: each PR's tests pass, and one bug hides on the line containing `match`.
+# Found = a non-praise review line cites that file within 3 lines of it. Recall is recorded only.
+
+[[case]]
+id = "defect-bulk-boundary"
+ticket = "Lines of 10 or more units get 2% off that line."
+defect = { file = "shop/pricing.py", match = "quantity > BULK_QUANTITY" }
+[case.files]
+"shop/pricing.py" = '''
+"""Order pricing. Amounts are integer cents."""
+DISCOUNTS = {"bronze": 0.0, "silver": 0.05, "gold": 0.10}
+BULK_QUANTITY = 10
+BULK_DISCOUNT = 0.02
+
+
+def line_total(price_cents: int, quantity: int) -> int:
+    total = price_cents * quantity
+    if quantity > BULK_QUANTITY:
+        return round(total * (1 - BULK_DISCOUNT))
+    return total
+
+
+def order_total(lines: list[tuple[int, int]], tier: str) -> int:
+    subtotal = sum(line_total(price, quantity) for price, quantity in lines)
+    return round(subtotal * (1 - DISCOUNTS[tier]))
+'''
+"tests/test_bulk.py" = '''
+import unittest
+
+from shop.pricing import line_total
+
+
+class BulkTest(unittest.TestCase):
+    def test_large_lines_get_two_percent_off(self):
+        self.assertEqual(line_total(100, 20), 1960)
+
+    def test_single_units_pay_full_price(self):
+        self.assertEqual(line_total(100, 1), 100)
+'''
+
+[[case]]
+id = "defect-swallowed-error"
+ticket = "Saving an order with a duplicate id must not crash checkout; tell the caller whether it saved."
+defect = { file = "shop/storage.py", match = "except Exception" }
+[case.files]
+"shop/storage.py" = '''
+"""Order storage in SQLite."""
+import sqlite3
+from pathlib import Path
+
+MIGRATIONS = Path(__file__).parent.parent / "migrations"
+
+
+def connect(path: str) -> sqlite3.Connection:
+    conn = sqlite3.connect(path)
+    for script in sorted(MIGRATIONS.glob("*.sql")):
+        conn.executescript(script.read_text(encoding="utf-8"))
+    return conn
+
+
+def save_order(conn: sqlite3.Connection, order_id: int, customer: str, total_cents: int) -> bool:
+    try:
+        conn.execute("INSERT INTO orders (id, customer, total_cents) VALUES (?, ?, ?)", (order_id, customer, total_cents))
+        conn.commit()
+    except Exception:
+        pass
+    return True
+
+
+def orders_for(conn: sqlite3.Connection, customer: str) -> list[tuple[int, int]]:
+    query = "SELECT id, total_cents FROM orders WHERE customer = ?"
+    return conn.execute(query, (customer,)).fetchall()
+'''
+"tests/test_duplicate_save.py" = '''
+import unittest
+
+from shop.storage import connect, save_order
+
+
+class DuplicateSaveTest(unittest.TestCase):
+    def test_duplicate_id_does_not_raise(self):
+        conn = connect(":memory:")
+        save_order(conn, 1, "ana", 500)
+        save_order(conn, 1, "ana", 500)
+
+    def test_new_order_reports_saved(self):
+        self.assertTrue(save_order(connect(":memory:"), 1, "ana", 500))
+'''
+
+[[case]]
+id = "defect-file-leak"
+ticket = "Export a customer's orders to a CSV file and return how many rows were written."
+defect = { file = "shop/export.py", match = "out = open(" }
+[case.files]
+"shop/export.py" = '''
+"""CSV export of a customer's orders."""
+import csv
+import sqlite3
+
+from shop.storage import orders_for
+
+
+def export_csv(conn: sqlite3.Connection, customer: str, path: str) -> int:
+    out = open(path, "w", newline="", encoding="utf-8")
+    rows = orders_for(conn, customer)
+    if not rows:
+        return 0
+    csv.writer(out).writerows(rows)
+    out.close()
+    return len(rows)
+'''
+"tests/test_export.py" = '''
+import tempfile
+import unittest
+from pathlib import Path
+
+from shop.export import export_csv
+from shop.storage import connect, save_order
+
+
+class ExportTest(unittest.TestCase):
+    def test_writes_one_row_per_order(self):
+        conn = connect(":memory:")
+        save_order(conn, 1, "ana", 500)
+        path = Path(tempfile.mkdtemp()) / "ana.csv"
+        self.assertEqual(export_csv(conn, "ana", str(path)), 1)
+        self.assertEqual(path.read_text(encoding="utf-8").strip(), "1,500")
+'''
+
+[[case]]
+id = "defect-cents-dollars"
+ticket = "Orders over $50 ship free; smaller orders pay $4.99 shipping."
+defect = { file = "shop/pricing.py", match = "subtotal_cents > FREE_SHIPPING_OVER" }
+[case.files]
+"shop/pricing.py" = '''
+"""Order pricing. Amounts are integer cents."""
+DISCOUNTS = {"bronze": 0.0, "silver": 0.05, "gold": 0.10}
+FREE_SHIPPING_OVER = 50
+SHIPPING_CENTS = 499
+
+
+def line_total(price_cents: int, quantity: int) -> int:
+    return price_cents * quantity
+
+
+def order_total(lines: list[tuple[int, int]], tier: str) -> int:
+    subtotal = sum(line_total(price, quantity) for price, quantity in lines)
+    return round(subtotal * (1 - DISCOUNTS[tier]))
+
+
+def shipping_cents(subtotal_cents: int) -> int:
+    if subtotal_cents > FREE_SHIPPING_OVER:
+        return 0
+    return SHIPPING_CENTS
+'''
+"tests/test_shipping.py" = '''
+import unittest
+
+from shop.pricing import shipping_cents
+
+
+class ShippingTest(unittest.TestCase):
+    def test_large_orders_ship_free(self):
+        self.assertEqual(shipping_cents(10000), 0)
+'''
+
+[[case]]
+id = "defect-shared-default"
+ticket = "Let the cart add lines one at a time."
+defect = { file = "shop/cart.py", match = "lines: list[tuple[int, int]] = []" }
+[case.files]
+"shop/cart.py" = '''
+"""A shopping cart built one line at a time."""
+
+
+def add_line(price_cents: int, quantity: int, lines: list[tuple[int, int]] = []) -> list[tuple[int, int]]:
+    lines.append((price_cents, quantity))
+    return lines
+'''
+"tests/test_cart.py" = '''
+import unittest
+
+from shop.cart import add_line
+
+
+class CartTest(unittest.TestCase):
+    def test_lines_accumulate(self):
+        lines = add_line(100, 1, [])
+        self.assertEqual(add_line(200, 2, lines), [(100, 1), (200, 2)])
+'''

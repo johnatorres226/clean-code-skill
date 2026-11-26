@@ -1,0 +1,65 @@
+{
+  "static": {
+    "clean-code": {
+      "skill_tokens": 2258,
+      "reference_tokens": 23226,
+      "skillevaluator_score": 87.5
+    },
+    "setup-standards": {
+      "skill_tokens": 1369,
+      "reference_tokens": 0,
+      "skillevaluator_score": 93.8
+    },
+    "ship": {
+      "skill_tokens": 1234,
+      "reference_tokens": 0,
+      "skillevaluator_score": 91.2
+    },
+    "verdict": {
+      "skill_tokens": 1296,
+      "reference_tokens": 1681,
+      "skillevaluator_score": 93.8
+    },
+    "verify": {
+      "skill_tokens": 485,
+      "reference_tokens": 0,
+      "skillevaluator_score": 93.8
+    }
+  },
+  "bench": {
+    "variant": "v2.1-sonnet",
+    "phase1.tests_pass": 1.0,
+    "phase1.commits_compliant": 1.0,
+    "phase1.protected_branches_written": 0.0,
+    "phase1.lint_weighted": 2.156,
+    "phase1.mi_structural": 51.247,
+    "phase1.maintainability_index": 53.962,
+    "phase1.comment_ratio": 0.028,
+    "phase1.cognitive_total": 8.125,
+    "phase1.cc_max": 4.406,
+    "phase1.halstead_volume": 170.441,
+    "phase1.ruff_violations": 0.406,
+    "phase1.sloc": 36.594,
+    "phase1.runtime_ms": 0.933,
+    "phase1.turns": 6.969,
+    "phase1.new_tokens": 14166.0,
+    "phase1.cost_usd": 0.078,
+    "phase2.followup_pass": 1.0,
+    "phase2.original_still_pass": 1.0,
+    "phase2.diff_added": 11.375,
+    "phase2.diff_deleted": 1.0,
+    "phase2.turns": 5.875,
+    "phase2.new_tokens": 10060.875,
+    "phase2.cost_usd": 0.055,
+    "phase2.after_mi_structural": 45.575,
+    "phase2.after_cognitive_total": 13.75,
+    "models": {
+      "none": [
+        "claude-sonnet-5-5"
+      ],
+      "standards": [
+        "claude-sonnet-5-5"
+      ]
+    }
+  }
+}

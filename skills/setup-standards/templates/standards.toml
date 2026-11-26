@@ -1,0 +1,77 @@
+# Single source of truth for this repo's standards. Read by .githooks/standards.py (hooks + CI)
+# and by the clean-code-standards skills. Edit values, not the scripts.
+
+[branches]
+protected   = ["main", "dev"]          # never committed or pushed to directly
+integration = "dev"                    # feature branches start here and PR back here
+release     = "main"                   # only `integration` merges here
+prefixes    = ["feat/", "fix/", "refactor/", "perf/", "test/", "docs/", "chore/", "ci/", "build/"]
+merge       = "rebase"                 # feature -> dev keeps atomic commits; dev -> main: "merge"
+
+[commits]                              # Conventional Commits, one concern each
+types             = ["feat", "fix", "refactor", "perf", "test", "docs", "chore", "ci", "build", "revert"]
+max_subject       = 72
+max_added_lines   = 300
+max_files         = 10
+
+[pr]
+max_added_lines   = 400                # review quality drops sharply past ~400 lines
+max_files         = 25
+reviews_required  = 0                  # human approval comes from code-owner review (docs/adr/0002)
+require_issue     = true               # PR description links its ticket: "Closes #N" / "Refs #N"
+
+[roles]                                # seniority = what you own, not your GitHub role
+senior       = ["@org/seniors"]        # own the human-review paths and approve releases
+guarded      = ["standards.toml", ".githooks/", ".github/", ".claude/"]  # the enforcement surface:
+                                       # always human review
+admin_bypass = false                   # true only on a solo repo: admin merges own PRs (PR-only, logged)
+auto_merge   = ["docs/research/", "CHANGELOG.md"]  # auto-merge allow-list: a change touching only
+                                       # these, under [review].auto_merge_max_lines, merges on a clean
+                                       # verdict. Personal and team tools: ["docs/", "*.md"]
+
+[tests]
+holdout = ["tests/acceptance/"]        # acceptance tests agents cannot rewrite: senior-owned, and a PR
+                                       # changing them may change nothing else
+
+[release]                              # dev -> main is a promotion (docs/adr/0003)
+approval = "human"                     # human: a senior approves every release (products others
+                                       # depend on); tiered: only releases that hit a human-review
+                                       # trigger (team tools); auto: release gates only (personal tools)
+
+[release.gates]                        # run only on release PRs: slow, costly or special-hardware
+                                       # checks, e.g. e2e = "make e2e"; empty = none
+
+[review]                               # tiers by consequence (docs/adr/0002); `standards.py tier`
+check  = "verdict"                     # reviewer agent: a separate App posting a status check
+app_id = 0                             # (never an approval); 0 = not set up, so not required yet
+auto_merge_max_lines = 50              # personal and team tools: 1000 (setup-standards)
+human_paths = [                        # human review; guarded paths and holdout tests always count.
+  "**/migrations/**", "*.sql", "db/schema*",                  # schema and data
+  "**/auth/**", "**/crypto/**", "**/payments/**", "**/billing/**",
+  "*.tf", "k8s/", "helm/", "deploy/", ".gitlab-ci.yml",       # infrastructure and deploy
+  "*.proto", "**/openapi.*",                                  # public API specs
+  "REVIEW.md", "**/CLAUDE.md", "**/AGENTS.md",                # review rules, agent settings
+  "docs/adr/", "GLOSSARY.md",                                 # decisions, vocabulary
+  "**/package.json", "**/pyproject.toml", "**/requirements*.txt",  # new dependencies
+  "**/go.mod", "**/Cargo.toml", "**/Gemfile",
+]                                      # "dir/" = prefix; with a wildcard = glob, "**/" = any depth
+human_content = [                      # regexes over added lines, case-sensitive; (?i) to change
+  '\bDROP (TABLE|COLUMN|DATABASE|SCHEMA)\b', '\bTRUNCATE\b',
+  '\bDELETE FROM \S+\s*;?\s*$',        # DELETE without WHERE on the same line
+  '\.(delete_all|destroy_all|update_all)\b',
+]
+
+[roles.areas]                          # who reviews an area when it escalates; does not gate
+"src/billing/" = ["@org/billing"]
+
+[size]                                 # deletions never count; `size-exempt` skips size checks when
+                                       # a reviewer (not the PR author) applies it
+exclude = ["*.lock", "*-lock.json", "*.min.*", "*.snap", "vendor/*", "dist/*"]
+
+[gates]                                # shell commands, run in this order; "" = not applicable
+format    = ""                         # check-only, never rewrites (e.g. ruff format --check .)
+lint      = ""
+typecheck = ""
+test      = ""
+secrets   = ""                         # at commit only, on the staged diff
+                                       # (e.g. gitleaks git --pre-commit --staged --redact)

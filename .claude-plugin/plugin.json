@@ -1,7 +1,7 @@
 {
-  "name": "clean-code",
-  "version": "1.1.0",
-  "description": "Clean code standards for C, C++, Java, and Python — naming, functions, comments, formatting, error handling, TDD, and refactoring — with a linter, a TDD scaffolder, a toolchain installer, and tooling to audit and evaluate the skill itself.",
+  "name": "clean-code-standards",
+  "version": "2.0.0",
+  "description": "The environment contract for production-grade agentic development: language-agnostic clean code, quality gates, atomic commits with size limits, protected main/dev branches, post-PR review, and merge rules — enforced by git hooks, CI, and a Claude Code guard hook rather than by prose. Pairs with orchestration frameworks such as pstack and mattpocock-skills.",
   "author": {
     "name": "johnatorres226",
     "url": "https://github.com/johnatorres226"
@@ -10,7 +10,7 @@
   "repository": "https://github.com/johnatorres226/clean-code-skill",
   "license": "MIT",
   "keywords": [
-    "clean-code", "code-review", "refactoring", "tdd", "naming",
-    "c", "cpp", "java", "python", "static-analysis", "code-quality"
+    "clean-code", "standards", "quality-gates", "conventional-commits", "atomic-commits",
+    "branch-protection", "code-review", "ci", "tdd", "refactoring", "git-hooks"
   ]
 }

@@ -1,0 +1,44 @@
+# This repo's own standards (dogfood). Template: skills/setup-standards/templates/standards.toml
+
+[branches]
+protected   = ["main", "dev"]
+integration = "dev"
+release     = "main"
+prefixes    = ["feat/", "fix/", "refactor/", "perf/", "test/", "docs/", "chore/", "ci/", "build/"]
+merge       = "rebase"
+
+[commits]
+types             = ["feat", "fix", "refactor", "perf", "test", "docs", "chore", "ci", "build", "revert"]
+max_subject       = 72
+max_added_lines   = 300
+max_files         = 10
+
+[pr]
+max_added_lines   = 400
+max_files         = 25
+reviews_required  = 0                  # solo repo; the standards status check is still required
+
+[roles]
+senior       = ["@johnatorres226"]
+guarded      = ["standards.toml", "skills/setup-standards/templates/", "hooks/", ".github/", ".claude/"]
+admin_bypass = true                    # solo repo: the owner cannot approve their own PRs
+auto_merge   = ["docs/research/", "README.md"]  # skills/ and agents/ are the product: agent merge
+
+[review]                               # tiers by consequence (docs/adr/0002)
+check  = "verdict"
+app_id = 0
+auto_merge_max_lines = 1000            # team tool; product files are .md, so paths are listed
+human_paths = ["docs/adr/", "GLOSSARY.md", "**/CLAUDE.md"]  # decisions, vocabulary, agent settings
+
+[size]
+exclude = ["*.lock", "*-lock.json", "results/*", "tools/evals/benchmarks/*", "tools/evals/review/*", "docs/research/*"]
+
+[gates]
+format    = ""
+lint      = "python tools/skill_audit.py skills/clean-code --fail-on-violation"
+typecheck = "python -m compileall -q skills tools tests"
+test      = "python tests/test_standards.py && python tests/test_regress.py && python tools/regress.py static"
+
+[release]
+approval = "tiered"                    # team tool: a senior approves releases that hit a human-review
+                                       # trigger (docs/adr/0003)

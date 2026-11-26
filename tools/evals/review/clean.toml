@@ -1,0 +1,173 @@
+# Clean PRs: correct, tested, in scope. A blocking finding on one is a false block.
+# expect_tier is the tier a careful reviewer would give; it is recorded, not gated.
+
+[[case]]
+id = "clean-platinum-tier"
+ticket = "Add a platinum tier that takes 15% off the order."
+expect_tier = "agent-merge"
+[case.files]
+"shop/pricing.py" = '''
+"""Order pricing. Amounts are integer cents."""
+DISCOUNTS = {"bronze": 0.0, "silver": 0.05, "gold": 0.10, "platinum": 0.15}
+
+
+def line_total(price_cents: int, quantity: int) -> int:
+    return price_cents * quantity
+
+
+def order_total(lines: list[tuple[int, int]], tier: str) -> int:
+    subtotal = sum(line_total(price, quantity) for price, quantity in lines)
+    return round(subtotal * (1 - DISCOUNTS[tier]))
+'''
+"tests/test_platinum.py" = '''
+import unittest
+
+from shop.pricing import order_total
+
+
+class PlatinumTest(unittest.TestCase):
+    def test_platinum_takes_fifteen_percent_off(self):
+        self.assertEqual(order_total([(1000, 2)], "platinum"), 1700)
+'''
+
+[[case]]
+id = "clean-newest-first"
+ticket = "List a customer's orders newest first."
+expect_tier = "agent-merge"
+[case.files]
+"shop/storage.py" = '''
+"""Order storage in SQLite."""
+import sqlite3
+from pathlib import Path
+
+MIGRATIONS = Path(__file__).parent.parent / "migrations"
+
+
+def connect(path: str) -> sqlite3.Connection:
+    conn = sqlite3.connect(path)
+    for script in sorted(MIGRATIONS.glob("*.sql")):
+        conn.executescript(script.read_text(encoding="utf-8"))
+    return conn
+
+
+def save_order(conn: sqlite3.Connection, order_id: int, customer: str, total_cents: int) -> None:
+    conn.execute("INSERT INTO orders (id, customer, total_cents) VALUES (?, ?, ?)", (order_id, customer, total_cents))
+    conn.commit()
+
+
+def orders_for(conn: sqlite3.Connection, customer: str) -> list[tuple[int, int]]:
+    query = "SELECT id, total_cents FROM orders WHERE customer = ? ORDER BY id DESC"
+    return conn.execute(query, (customer,)).fetchall()
+'''
+"tests/test_newest_first.py" = '''
+import unittest
+
+from shop.storage import connect, orders_for, save_order
+
+
+class NewestFirstTest(unittest.TestCase):
+    def test_orders_are_listed_newest_first(self):
+        conn = connect(":memory:")
+        save_order(conn, 1, "ana", 500)
+        save_order(conn, 2, "ana", 700)
+        self.assertEqual(orders_for(conn, "ana"), [(2, 700), (1, 500)])
+'''
+
+[[case]]
+id = "clean-readme-tests"
+ticket = "Document how to run the tests."
+commit = "docs: document how to run the tests"
+expect_tier = "auto-merge"
+[case.files]
+"README.md" = '''
+# shop
+
+Order pricing, storage and receipts for a small web shop.
+
+## Tests
+
+    python -m unittest discover -s tests -t .
+'''
+
+[[case]]
+id = "clean-subtotal"
+ticket = "Expose the order subtotal before discounts so the cart page can show it."
+expect_tier = "agent-merge"
+[case.files]
+"shop/pricing.py" = '''
+"""Order pricing. Amounts are integer cents."""
+DISCOUNTS = {"bronze": 0.0, "silver": 0.05, "gold": 0.10}
+
+
+def line_total(price_cents: int, quantity: int) -> int:
+    return price_cents * quantity
+
+
+def subtotal(lines: list[tuple[int, int]]) -> int:
+    return sum(line_total(price, quantity) for price, quantity in lines)
+
+
+def order_total(lines: list[tuple[int, int]], tier: str) -> int:
+    return round(subtotal(lines) * (1 - DISCOUNTS[tier]))
+'''
+"tests/test_subtotal.py" = '''
+import unittest
+
+from shop.pricing import subtotal
+
+
+class SubtotalTest(unittest.TestCase):
+    def test_subtotal_sums_lines_before_discount(self):
+        self.assertEqual(subtotal([(1000, 2), (500, 1)]), 2500)
+
+    def test_empty_order_has_zero_subtotal(self):
+        self.assertEqual(subtotal([]), 0)
+'''
+
+[[case]]
+id = "clean-has-receipt"
+ticket = "Let callers check whether an order already has a receipt."
+expect_tier = "agent-merge"
+[case.files]
+"shop/receipts.py" = '''
+"""Plain-text receipts on disk."""
+from pathlib import Path
+
+RECEIPTS = Path("receipts")
+
+
+def receipt_path(order_id: int) -> Path:
+    return RECEIPTS / f"{order_id}.txt"
+
+
+def has_receipt(order_id: int) -> bool:
+    return receipt_path(order_id).exists()
+
+
+def write_receipt(order_id: int, text: str) -> None:
+    RECEIPTS.mkdir(exist_ok=True)
+    receipt_path(order_id).write_text(text, encoding="utf-8")
+
+
+def read_receipt(order_id: int) -> str:
+    return receipt_path(order_id).read_text(encoding="utf-8")
+'''
+"tests/test_has_receipt.py" = '''
+import tempfile
+import unittest
+from pathlib import Path
+
+from shop import receipts
+
+
+class HasReceiptTest(unittest.TestCase):
+    def setUp(self):
+        receipts.RECEIPTS = Path(tempfile.mkdtemp()) / "receipts"
+
+    def test_true_after_writing(self):
+        receipts.write_receipt(1, "thanks")
+        self.assertTrue(receipts.has_receipt(1))
+
+    def test_false_when_missing(self):
+        self.assertFalse(receipts.has_receipt(2))
+'''

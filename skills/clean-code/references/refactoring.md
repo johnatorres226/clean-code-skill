@@ -100,15 +100,15 @@ as often correct — over-extraction is real.
 ### Extract Variable (Explanatory Variable)
 **Smell:** a complex expression, especially a compound conditional.
 **Mechanics:** name each sub-expression for its *meaning*, not its computation.
-```java
-// before
-if (platform.toUpperCase().indexOf("MAC") > -1 && browser.contains("IE") && wasInitialized()) {
+```
+# before
+if upper(platform).index_of("MAC") > -1 and browser.contains("IE") and was_initialized() and resize > 0:
 
-// after
-boolean isMacOs         = platform.toUpperCase().contains("MAC");
-boolean isInternetExplorer = browser.contains("IE");
-boolean wasResized      = resize > 0;
-if (isMacOs && isInternetExplorer && wasInitialized() && wasResized) {
+# after
+is_mac_os            = upper(platform).contains("MAC")
+is_internet_explorer = browser.contains("IE")
+was_resized          = resize > 0
+if is_mac_os and is_internet_explorer and was_initialized() and was_resized:
 ```
 
 ### Rename
@@ -122,7 +122,7 @@ concept nobody had named (`DateRange`, `Money`, `PagingSpec`).
 
 ### Replace Magic Number with Named Constant
 **Smell:** a literal whose meaning must be inferred.
-**Mechanics:** `const`/`final`/module-level constant with a name that states the meaning *and the
+**Mechanics:** an immutable named constant with a name that states the meaning *and the
 unit*. Applies to strings and to `""`, `0`, `-1` sentinels too.
 
 ### Replace Conditional with Polymorphism
@@ -138,7 +138,7 @@ un-indents. See `functions.md`.
 ### Decompose Conditional
 **Smell:** a hairy `if`/`else` where you cannot tell what the condition means.
 **Mechanics:** extract the condition into a named predicate and each branch into a named function.
-```python
+```
 # before
 if date < SUMMER_START or date > SUMMER_END:
     charge = quantity * winter_rate + winter_service_charge
@@ -150,13 +150,13 @@ charge = winter_charge(quantity) if is_winter(date) else summer_charge(quantity)
 ```
 
 ### Encapsulate Conditional / Boundary Condition
-**Smell:** `if (timer.hasExpired() && !timer.isRecurrent())`, or `level + 1` computed in five
+**Smell:** `if timer.has_expired() and not timer.is_recurrent()`, or `level + 1` computed in five
 places.
-**Mechanics:** `if (shouldBeDeleted(timer))`. For boundaries, compute once into a named variable:
-`int nextLevel = level + 1;`.
+**Mechanics:** `if should_be_deleted(timer)`. For boundaries, compute once into a named variable:
+`next_level = level + 1`.
 
 ### Encapsulate Field / Hide Delegate
-**Smell:** callers reaching through your object into its collaborators (`a.getB().getC()`).
+**Smell:** callers reaching through your object into its collaborators (`a.b().c()`).
 **Mechanics:** add a method that does what the caller actually wanted; make the field private.
 
 ### Move Function/Field
@@ -171,16 +171,16 @@ correctly.
 
 ### Replace Loop with Pipeline / Algorithm
 **Smell:** a hand-rolled loop doing filter/map/reduce.
-**Mechanics:** `std::ranges` / streams / comprehensions. Usually shorter, often faster, and the
+**Mechanics:** the language's pipeline or comprehension. Usually shorter, often faster, and the
 intent becomes visible.
-```cpp
-// before
-std::vector<std::string> names;
-for (const auto& u : users) { if (u.active) names.push_back(u.name); }
+```
+# before
+names = []
+for u in users:
+    if u.active: names.append(u.name)
 
-// after
-auto names = users | std::views::filter(&User::active)
-                   | std::views::transform(&User::name);
+# after
+names = [u.name for u in users if u.active]
 ```
 
 ### Remove Dead Code
@@ -202,95 +202,67 @@ a comment saying why.
 
 A real-shaped legacy function, cleaned in steps. **Tests are green after every step.**
 
-**Step 0 — the starting point (Java)**
+**Step 0 — the starting point**
 
-```java
-public String report(List<int[]> data, int mode) {
-    String s = "";
-    double t = 0;
-    for (int i = 0; i < data.size(); i++) {
-        int[] r = data.get(i);
-        if (r[2] != 0) {
-            double v = r[0] * r[1];
-            if (mode == 1) { v = v * 1.2; }
-            else if (mode == 2) { v = v * 0.8; }
-            t += v;
-            s = s + r[0] + "\t" + r[1] + "\t" + String.format("%.2f", v) + "\n";
-        }
-    }
-    s = s + "TOTAL\t\t" + String.format("%.2f", t) + "\n";
-    return s;
-}
+```
+function report(data, mode):
+    s = ""
+    t = 0.0
+    for i in 0 .. length(data) - 1:
+        r = data[i]
+        if r[2] != 0:
+            v = r[0] * r[1]
+            if mode == 1: v = v * 1.2
+            else if mode == 2: v = v * 0.8
+            t += v
+            s = s + r[0] + "\t" + r[1] + "\t" + format(v, 2) + "\n"
+    return s + "TOTAL\t\t" + format(t, 2) + "\n"
 ```
 Smells: magic indices, magic multipliers, a mode flag, mixed abstraction levels, string
 concatenation in a loop, meaningless names, one function doing filtering + pricing + formatting +
 totalling.
 
-**Step 1 — name things (Rename, Extract Variable).**
-```java
-public String report(List<int[]> lines, int mode) {
-    StringBuilder report = new StringBuilder();
-    double total = 0;
-    for (int[] line : lines) {
-        int quantity  = line[0];
-        int unitPrice = line[1];
-        int status    = line[2];
-        if (status != 0) {
-            double amount = quantity * unitPrice;
-            ...
-        }
-    }
-}
-```
+**Step 1 — name things (Rename, Extract Variable).** `r[0]` becomes `quantity`, `r[1]`
+`unit_price`, `r[2]` `status`, `t` `total`, `s` `report`.
 
 **Step 2 — replace the array with a type (Introduce Parameter Object).**
-```java
-record LineItem(int quantity, int unitPrice, Status status) {
-    int subtotal() { return quantity * unitPrice; }
-}
+```
+type LineItem(quantity, unit_price, status):
+    function subtotal(): return quantity * unit_price
 ```
 The `[0]/[1]/[2]` decoding disappears from every call site, and `subtotal()` lands where the data
 lives instead of where the loop happens.
 
 **Step 3 — kill the mode flag (Replace Conditional with Polymorphism).**
-```java
-enum PricingTier {
-    STANDARD(1.00), PREMIUM(1.20), DISCOUNT(0.80);
-    private final double multiplier;
-    PricingTier(double multiplier) { this.multiplier = multiplier; }
-    BigDecimal apply(BigDecimal amount) { return amount.multiply(BigDecimal.valueOf(multiplier)); }
-}
+```
+enum PricingTier(multiplier):
+    STANDARD(1.00), PREMIUM(1.20), DISCOUNT(0.80)
+    function apply(amount): return amount * multiplier
 ```
 The magic numbers now have names and one home. `report(lines, 1)` becomes
 `report(lines, PricingTier.PREMIUM)` — readable at the call site.
 
 **Step 4 — extract the responsibilities (Extract Function, Split Loop).**
-```java
-public String report(List<LineItem> lines, PricingTier tier) {
-    List<LineItem> billable = lines.stream().filter(LineItem::isBillable).toList();
-    return formatLines(billable, tier) + formatTotal(totalFor(billable, tier));
-}
+```
+function report(lines, tier):
+    billable = [line for line in lines if line.is_billable()]
+    return format_lines(billable, tier) + format_total(total_for(billable, tier))
 
-private BigDecimal totalFor(List<LineItem> lines, PricingTier tier) {
-    return lines.stream().map(line -> tier.apply(line.subtotal()))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-}
+function total_for(lines, tier):
+    return sum(tier.apply(line.subtotal()) for line in lines)
 
-private String formatLines(List<LineItem> lines, PricingTier tier) {
-    return lines.stream().map(line -> formatLine(line, tier)).collect(joining("\n", "", "\n"));
-}
+function format_lines(lines, tier):
+    return join([format_line(line, tier) + "\n" for line in lines], "")
 
-private String formatLine(LineItem line, PricingTier tier) {
-    return "%d\t%d\t%.2f".formatted(line.quantity(), line.unitPrice(), tier.apply(line.subtotal()));
-}
+function format_line(line, tier):
+    return line.quantity + "\t" + line.unit_price + "\t" + format(tier.apply(line.subtotal()), 2)
 
-private String formatTotal(BigDecimal total) {
-    return "TOTAL\t\t%.2f%n".formatted(total);
-}
+function format_total(total):
+    return "TOTAL\t\t" + format(total, 2) + "\n"
 ```
 
-**Step 5 — fix the correctness bug the cleanup exposed.** `double` for money is wrong; the
-refactor made it visible, so switch to `BigDecimal` — **in its own commit, with its own test**,
+**Step 5 — fix the correctness bug the cleanup exposed.** Floating point for money is wrong; the
+refactor made it visible, so switch to a decimal type — **in its own commit, with its own test**,
 because *that* is a behavior change.
 
 Result: four small named functions, no magic numbers, no flag argument, no array indexing, a
@@ -307,20 +279,16 @@ The chicken-and-egg problem: you need tests to refactor safely, but the code is 
 2. **Apply extract-and-inject**, the lowest-risk move there is: take the untestable dependency
    (a `new`, a static call, a global, a clock) and lift it into a constructor parameter or
    argument. Nothing else changes.
-   ```java
-   // before — cannot test without a real database
-   public class Report {
-       public String render() {
-           Data d = new DatabaseGateway().load();   // <-- the obstacle
-           ...
    ```
-   ```java
-   // after — one parameter added; behavior identical; now fakeable
-   public class Report {
-       private final Gateway gateway;
-       public Report(Gateway gateway) { this.gateway = gateway; }
-       public String render() {
-           Data d = gateway.load();
+   # before — cannot test without a real database
+   class Report:
+       function render():
+           data = DatabaseGateway().load()     # <-- the obstacle
+
+   # after — one parameter added; behavior identical; now fakeable
+   class Report(gateway: Gateway):
+       function render():
+           data = gateway.load()
    ```
 3. **Write characterization tests** that assert what the code *currently* does. If a test fails,
    fix the test to match reality — you're documenting, not judging.

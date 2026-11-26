@@ -5,14 +5,14 @@ A reference for reviewing and cleaning code. Each entry: the smell, why it costs
 The ID scheme (**C**omments, **E**nvironment, **F**unctions, **G**eneral, **J**ava/language,
 **N**ames, **T**ests) follows the catalog in Robert C. Martin's *Clean Code* (2008), Chapter 17,
 so IDs can be cited in review and cross-referenced with the book. The explanations here are
-written for this skill and extended to C, C++, and Python.
+written for this skill and stated language-neutrally.
 
 ## Two ways to use this file — pick one deliberately
 
-This is the largest reference in the skill (~4,200 tokens). Read it whole only when you mean to.
+This is the largest reference in the skill (~4,800 tokens). Read it whole only when you mean to.
 
 **1. Targeted lookup — you already have an ID.** This is the normal path after running
-`scripts/clean_code_lint.py`, which reports findings tagged with these IDs. Do **not** load the
+a linter or review that reports findings tagged with these IDs. Do **not** load the
 file; grep the single entry:
 
 ```bash
@@ -41,6 +41,7 @@ One line per entry — enough to recognize a smell, not enough to fix it. Grep t
 - `C3` — Redundant comment
 - `C4` — Poorly written comment
 - `C5` — Commented-out code
+- `C6` — Comment explaining our own surprise
 
 **Environment**
 
@@ -95,7 +96,7 @@ One line per entry — enough to recognize a smell, not enough to fix it. Grep t
 
 **Language-specific**
 
-- `J1` — Avoid long import lists by using wildcards
+- `J1` — Keep imports explicit
 - `J2` — Don't inherit constants
 - `J3` — Constants versus enums
 
@@ -139,7 +140,7 @@ right system already holds it.
 because readers trust it. *Fix:* update in the same edit as the code, or delete it. When you see a
 stale comment, fix it immediately — it will only get staler.
 
-**C3 — Redundant comment.** Says exactly what the code says (`i++; // increment i`, a Javadoc on
+**C3 — Redundant comment.** Says exactly what the code says (`i += 1  # increment i`, a doc comment on
 a one-line getter). Pure noise that must be maintained. *Fix:* delete.
 
 **C4 — Poorly written comment.** Rambling, cryptic, misspelled, or stating the obvious at length.
@@ -149,6 +150,11 @@ rewrite or delete.
 **C5 — Commented-out code.** An abomination. Nobody who follows you will dare delete it, so it
 accumulates and rots, and readers waste time wondering if it matters. *Fix:* delete it. Git
 remembers.
+
+**C6 — Comment explaining our own surprise.** `# not thread-safe`, `# do not remove`, `# hack`, a
+long justification: the code we own does something a reader would not expect, and prose apologizes
+for it. *Fix:* rename, type, test or restructure until the behavior is obvious; keep a comment only
+when the cause is outside our code (a vendor, platform or protocol). Flag it `MUST KILL: <symbol>`.
 
 ## Environment
 
@@ -181,7 +187,7 @@ compiled. *Fix:* delete it. Version control remembers.
 
 ## General
 
-**G1 — Multiple languages in one source file.** A JSP with Java, HTML, JavaScript, CSS, and SQL is
+**G1 — Multiple languages in one source file.** A template mixing a host language, HTML, JavaScript, CSS, and SQL is
 unreadable and untestable. *Fix:* minimize the number of languages per file; extract templates,
 queries, and scripts to their own files. (Some mixing is unavoidable — keep it small and
 contained.)
@@ -312,17 +318,15 @@ predicate positively.
 
 **G31 — Hidden temporal couplings.** When calls must happen in a specific order but nothing
 enforces it, someone will eventually reorder them. *Fix:* make each step consume the previous
-step's output, so the compiler enforces the sequence:
-```java
-// before — order matters, nothing says so
-saturateGradient();
-reticulateSplines();
-diveForMoreGold();
+step's output, so the type system enforces the sequence:
+```
+# before — order matters, nothing says so
+saturate_gradient(); reticulate_splines(); dive_for_more_gold()
 
-// after — order is structurally enforced
-Gradient gradient = saturateGradient();
-Splines splines   = reticulateSplines(gradient);
-diveForMoreGold(splines);
+# after — order is structurally enforced
+gradient = saturate_gradient()
+splines  = reticulate_splines(gradient)
+dive_for_more_gold(splines)
 ```
 
 **G32 — Don't be arbitrary.** Structure should have a reason a reader can infer. A class placed in
@@ -346,44 +350,19 @@ chain; any link changing breaks you. *Fix:* ask the immediate collaborator for w
 
 ## Language-specific
 
-The original catalog's J-entries are Java; the equivalents in the other languages are listed
-alongside.
+The original catalog's J-entries are Java; they are stated here in language-neutral form. Anything
+narrower than this belongs in the repo's linter config, not in prose.
 
-**J1 — Avoid long import lists by using wildcards.** When you use many classes from a package,
-`import java.util.*;` is more readable than twenty lines. *Modern counterpoint:* most Java teams
-and Google's style guide now require explicit imports because they make dependencies greppable
-and avoid name collisions — and IDEs fold them. **Follow your team's rule; be consistent.**
-Python's equivalent (`from x import *`) is genuinely harmful — it hides where names come from and
-breaks static analysis. Don't. C++'s `using namespace std;` at file scope in a header is likewise
-prohibited; inside a function or `.cpp` it's tolerable.
+**J1 — Keep imports explicit.** Wildcard imports hide where names come from, break static
+analysis, and invite collisions. Import what you use; let the formatter order and fold them.
 
-**J2 — Don't inherit constants.** Hiding constants in a base class or interface so subclasses get
-them for free is a misuse of inheritance — the reader can't find where the constant comes from.
-*Fix:* an `enum` or a named constants holder, imported explicitly. Same rule for C++ (don't
-inherit just to reach `static constexpr` members) and Python (don't use a mixin as a constant bag).
+**J2 — Don't inherit constants.** Hiding constants in a base type so subtypes get them for free
+misuses inheritance — the reader can't find where they come from. *Fix:* an enum or a named
+constants holder, imported explicitly.
 
-**J3 — Constants versus enums.** `int`/`#define` constants have no type safety, no namespace, and
-no meaningful `toString`. Enums do, and can carry methods and fields. *Fix:* `enum` in Java,
-`enum class` in C++, `enum.Enum`/`StrEnum` in Python, and typed `enum` (not `#define`) in C where
-the compiler helps.
-
-**C/C++ additions:**
-- **Missing `const`.** Every parameter and method that doesn't mutate should say so. `const` is
-  free documentation the compiler enforces.
-- **Raw owning pointers.** In C++, a raw pointer should never own. Use `unique_ptr`/`shared_ptr`,
-  or containers. In C, document ownership at every boundary.
-- **Manual resource management where RAII exists.** A matched `new`/`delete` or `lock`/`unlock`
-  pair across an early return is a leak waiting for the first exception.
-- **Macros where a function or `constexpr` works.** Macros have no scope and no types.
-- **Implicit conversions and narrowing.** Mark single-argument constructors `explicit`; use
-  brace-init to catch narrowing.
-
-**Python additions:**
-- **Mutable default arguments** (`def f(items=[])`) — a classic, silent bug. Use `None` + a guard.
-- **Bare `except:`** — swallows `KeyboardInterrupt` and `SystemExit`. Catch specific exceptions.
-- **Missing type hints on public interfaces** — hints are documentation the checker verifies.
-- **Reaching for a class where a function suffices**, or a `dict` where a `dataclass` belongs.
-- **`assert` for runtime validation** — asserts vanish under `-O`. Raise a real exception.
+**J3 — Constants versus enums.** Bare integer or macro constants have no type safety, no
+namespace, and no meaningful string form. Enums do, and can carry behavior. *Fix:* use the
+language's typed enum.
 
 ## Names
 
