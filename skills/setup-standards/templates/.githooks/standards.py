@@ -137,12 +137,12 @@ def branch_problem(branch: str, cfg: dict) -> str | None:
 
 
 def cmd_pre_push(cfg: dict, stdin: str) -> int:
-    for line in stdin.splitlines():
-        remote_ref = line.split()[2]
-        problem = branch_problem(remote_ref.removeprefix("refs/heads/"), cfg)
-        if problem:
-            return fail(problem)
-    return cmd_check(cfg, fast=False)
+    refs = [line.split()[2] for line in stdin.splitlines()]
+    branches = [ref.removeprefix("refs/heads/") for ref in refs if ref.startswith("refs/heads/")]
+    problem = next(filter(None, (branch_problem(b, cfg) for b in branches)), None)
+    if problem:
+        return fail(problem)
+    return cmd_check(cfg, fast=False) if branches else 0  # a tag-only push changes no branch
 
 
 def head_problem(branch: str, cfg: dict) -> str | None:
