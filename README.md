@@ -74,7 +74,7 @@ This plugin does not orchestrate; it is the floor every orchestrator's output mu
 | mattpocock `to-tickets`, `triage` | one ticket → one `<type>/<slug>` branch → one PR to `dev` |
 | `/code-review`, pstack `interrogate`, bugbot | findings the `verdict` skill verifies one by one |
 
-Review passes adapted from Cursor's Thermos plugin (MIT); credited in `skills/verdict/references/`.
+Review passes adapted from Cursor's Thermos and pstack plugins (MIT); credited in `skills/verdict/references/`.
 
 ## Evaluation
 

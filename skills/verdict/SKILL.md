@@ -9,7 +9,8 @@ metadata:
 
 # Verdict
 
-The two hunting passes are adapted from Cursor's Thermos plugin (MIT); see each reference file.
+Passes A and B are adapted from Cursor's Thermos plugin and pass C from its pstack plugin (both
+MIT); see each reference file.
 Tiers follow ADR 0002 and releases ADR 0003 in this plugin's repo.
 
 ## Modes
@@ -31,19 +32,20 @@ The brief names one; full hunt is the default.
 - The floor tier: `standards.py tier` when the repo has it; otherwise apply the triggers in
   section 5 by hand.
 
-## 2. Hunt in two passes
+## 2. Hunt in three passes
 
 Give each pass the diff, the changed files and the ticket, and nothing else: no PR discussion.
 
 - **Pass A**, correctness and security: `references/correctness-security.md`.
 - **Pass B**, maintainability: `references/quality.md`.
+- **Pass C**, comments: `references/comments.md`.
 
-If you can start subagents, run both passes in parallel in fresh contexts. If not (you are
-already a subagent, or the harness has none), run A then B yourself.
+If you can start subagents, run the passes in parallel in fresh contexts. If not (you are
+already a subagent, or the harness has none), run A, B, then C yourself.
 
 ## 3. Collect other findings
 
-Only after both passes: read the PR or MR discussion, bot reviews, and any other review output the
+Only after all three passes: read the PR or MR discussion, bot reviews, and any other review output the
 brief hands you (another review skill, a linter report). Add each as a candidate, credited to its
 source.
 
@@ -78,7 +80,7 @@ line; a `pass` without evidence is a `concern`.
 | correctness | Pass A: bugs, broken features, devex, feature leaks |
 | security | Pass A security, and the scanners ran and passed |
 | tests | Do tests reach the changed code and fail if it is wrong? None weakened or deleted? |
-| maintainability | Pass B, then names and clarity |
+| maintainability | Passes B and C, then names and clarity |
 | docs | Changed behavior has its docs, changelog and contract updates |
 
 **Tier.** Start from the floor; you may only raise it.
