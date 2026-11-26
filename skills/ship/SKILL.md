@@ -30,14 +30,18 @@ feat/csv-export`. One branch, one goal. A second goal is a second branch.
 - **Mid-work fixes to an unpushed commit** use `git commit --fixup <sha>` then
   `GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash dev` (non-interactive). Never rewrite pushed shared history.
 
-## 3. Open the PR
+## 3. Push early, as a draft PR
 
-Run the `verify` skill first. Then push the branch and open a PR **to `dev`**:
+After the first commit, push and open a **draft** PR to `dev`, then push each commit after it. CI
+runs on every push against the branch merged with `dev`, so integration problems show up early:
 
 ```bash
 git push -u origin HEAD
-gh pr create --base dev --fill-first   # then complete the template; first line: Closes #<ticket>
+gh pr create --draft --base dev --fill-first   # first line of the description: Closes #<ticket>
 ```
+
+When the work is done, run the `verify` skill, complete the template and mark the PR ready:
+`gh pr ready`. Review (step 4) starts there, never on a draft.
 
 CI rejects a PR whose description does not link its ticket, and a PR that changes acceptance
 tests (`[tests].holdout`) together with code: tests that define "done" change in their own PR.
@@ -48,7 +52,7 @@ bulk rename): say why in the description and ask a reviewer to label the PR `siz
 label when the author applied it). Messages are still
 checked; deletions never count toward limits.
 
-## 4. Review pass — after the PR exists, before merge
+## 4. Review pass — once the PR is ready, before merge
 
 Review the PR as a reviewer who did not write it: the `reviewer` agent, or the `verdict` skill
 in a fresh context, so the author is not grading their own work. It returns a verdict line with the
