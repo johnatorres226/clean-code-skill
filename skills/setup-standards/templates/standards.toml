@@ -73,3 +73,5 @@ format    = ""                         # check-only, never rewrites (e.g. ruff f
 lint      = ""
 typecheck = ""
 test      = ""
+secrets   = ""                         # at commit only, on the staged diff
+                                       # (e.g. gitleaks git --pre-commit --staged --redact)
