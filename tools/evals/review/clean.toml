@@ -76,6 +76,7 @@ class NewestFirstTest(unittest.TestCase):
 [[case]]
 id = "clean-readme-tests"
 ticket = "Document how to run the tests."
+commit = "docs: document how to run the tests"
 expect_tier = "auto-merge"
 [case.files]
 "README.md" = '''
