@@ -35,7 +35,7 @@ Examples in references are language-neutral pseudocode; the repo's linter owns l
 | Looking up a smell | `references/smells-catalog.md` | **grep it — see Step 3** |
 
 Never read the smell catalog whole: `grep -A4 -E '^\*\*(G25|F3)' references/smells-catalog.md`
-returns just those entries (~60 tokens each); its `## Index` lists all 66 in one line each.
+returns just those entries (~60 tokens each); its `## Index` lists all 67 in one line each.
 
 ## Writing a function — the procedure
 
@@ -80,24 +80,24 @@ Before writing one, try in order:
 2. **Extract** — can a named function or explanatory variable say it?
 3. **Restructure** — is the comment apologizing for a design problem you should just fix?
 
-Write the comment only if all three fail. Then follow these rules:
+Even then, only these comments stay (the reviewer flags the rest), and each explains *why*, never
+*what*:
 
-- **Explain *why*, never *what*.** The code says what. Only the human knows why the timeout is
-  300 ms, why the loop counts down, why this workaround exists and what ticket kills it.
-- **Legal, licensing, and provenance headers** are legitimate and stay.
-- **Warnings of consequence** are legitimate: "not thread-safe", "O(n²) — fine below 1000 rows,
-  do not use on the full table".
-- **`TODO:`** is legitimate when it carries an owner and a condition for removal. Audit them
-  regularly; a TODO with no plan is litter.
-- **Public API documentation** (Javadoc, docstrings, Doxygen) is legitimate and expected —
-  document contracts: parameters, returns, raises/throws, ownership, thread-safety, complexity.
-  Do not Javadoc a private one-line getter.
-- **Never leave commented-out code.** Version control remembers. Commented-out code is a corpse
-  that no one will dare bury.
-- **A comment that lies is worse than no comment.** If you change the code, change the comment in
-  the same edit or delete it.
+- **Legal, licensing, and provenance headers.**
+- **Behavior forced by something we cannot reshape** — a dependency, platform, vendor, protocol or
+  device: why the timeout is 300 ms when the vendor drops idle sockets at 350.
+- **Public API documentation** (Javadoc, docstrings, Doxygen) — document contracts: parameters,
+  returns, raises/throws, ownership, thread-safety, complexity. Not a private one-line getter.
+- **Links to an issue, RFC or source** for a constraint the code cannot express. A `TODO` or known
+  limit needs an owner, an exit condition and an issue; without them it is litter.
+- **Lint suppressions whose rule is faulty, pedantic or style-only**, with the reason.
 
-Full rules, plus the good/bad comment taxonomy: `references/comments.md`.
+A surprise in our own code ("not thread-safe", "do not remove") is a design problem: rename, type,
+test or restructure until it needs no comment. **Never leave commented-out code** — version control
+remembers. **A comment that lies is worse than none:** change or delete it in the same edit as
+the code.
+
+Full rules, the reshapes, and the bad-comment taxonomy: `references/comments.md`.
 
 ## Naming — the short version
 
