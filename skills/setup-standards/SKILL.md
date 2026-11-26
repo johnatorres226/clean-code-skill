@@ -89,7 +89,8 @@ Each requires a PR, the strict `standards` check from GitHub Actions, code-owner
 dismissal of stale approvals, approval of the last push by someone else, resolved conversations,
 and no force pushes or deletions; the integration branch also requires linear history. The bypass
 list is empty. Only on a solo repo set `[roles].admin_bypass = true`: the admin may then merge
-their own PRs, never push directly, and each bypass is logged. After the first apply, check that
+their own PRs, never push directly, and each bypass is logged; at release, a senior's
+bypass merge counts as the PR's review. After the first apply, check that
 the ruleset page lists "Repository admin" as the bypass actor. If you already ran classic
 protection, delete it (`gh api -X DELETE repos/{owner}/{repo}/branches/<b>/protection`) so one
 source of rules remains.

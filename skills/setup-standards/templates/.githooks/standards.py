@@ -310,7 +310,17 @@ def proof_problem(sha: str, cfg: dict) -> str | None:
     if pr is None:
         return f"commit {sha[:8]} reached {integration} without a merged PR"
     missing = [c for c in review_checks(cfg) if not check_passed(pr["head"]["sha"], c)]
-    return f"commit {sha[:8]}: PR #{pr['number']} has no passing '{missing[0]}' check" if missing else None
+    if not missing or senior_bypass_merge(pr["number"], cfg):
+        return None
+    return f"commit {sha[:8]}: PR #{pr['number']} has no passing '{missing[0]}' check"
+
+
+def senior_bypass_merge(pr: int, cfg: dict) -> bool:
+    """Solo repo: the senior cannot approve their own PR, so their admin-bypass merge is the review."""
+    if not cfg["roles"].get("admin_bypass"):
+        return False
+    merger = (gh_api(f"repos/{{owner}}/{{repo}}/pulls/{pr}") or {}).get("merged_by") or {}
+    return bool(merger) and is_senior(merger["login"], cfg)
 
 
 def cmd_release(cfg: dict, base: str) -> int:
