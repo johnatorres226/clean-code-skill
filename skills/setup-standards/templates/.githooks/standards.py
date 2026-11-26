@@ -173,8 +173,6 @@ def is_release(branch: str | None, cfg: dict) -> bool:
 
 
 def pr_problem(cfg: dict, base: str, opts: dict) -> str | None:
-    if is_release(opts["branch"], cfg):
-        return None  # every commit passed these rules in its ticket PR; `release` checks that
     files = git("diff", "--name-only", f"{base}...HEAD").split()
     return (opts["branch"] and head_problem(opts["branch"], cfg)) or holdout_problem(files, cfg) \
         or link_problem(opts["body"], cfg) \
@@ -182,8 +180,11 @@ def pr_problem(cfg: dict, base: str, opts: dict) -> str | None:
 
 
 def cmd_range(cfg: dict, base: str, opts: dict) -> int:
+    if is_release(opts["branch"], cfg):
+        return 0  # every commit passed these rules in its ticket PR; `release` checks that
     for sha in git("rev-list", "--no-merges", f"{base}..HEAD").split():
-        problem = message_problem(git("log", "-1", "--format=%B", sha), cfg) or             (opts["size"] and size_problem(git("show", "--numstat", "--format=", sha), cfg))
+        problem = message_problem(git("log", "-1", "--format=%B", sha), cfg) \
+            or (opts["size"] and size_problem(git("show", "--numstat", "--format=", sha), cfg))
         if problem:
             return fail(f"commit {sha[:8]}: {problem}")
     problem = pr_problem(cfg, base, opts)
