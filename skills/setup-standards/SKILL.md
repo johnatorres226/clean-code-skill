@@ -24,6 +24,10 @@ rewriting), lint, typecheck, test. A gate the stack has no tool for stays `""`. 
 linter or formatter at all, propose the ecosystem default once (ruff, eslint+prettier, gofmt+vet,
 clippy+rustfmt, clang-format+clang-tidy, checkstyle) and add it only on a yes.
 
+Propose a secret scanner for the `secrets` gate the same way: `gitleaks git --pre-commit --staged
+--redact` (gitleaks 8.19+). It runs at every commit, because a committed secret needs a history
+rewrite; every machine needs the binary. On GitHub, push protection (step 4) is the backstop.
+
 ## 2. Copy the templates
 
 ```
@@ -88,6 +92,13 @@ source of rules remains.
 Releases: create a `release` environment with the senior team as required reviewers,
 "Prevent self-review" on, admin bypass off, and deployments limited to `main`. Keep deploy
 secrets in that environment, never in repository secrets.
+
+Security settings, same confirmation (push protection is free on public repos):
+
+```bash
+gh api -X PATCH repos/{owner}/{repo} -f 'security_and_analysis[secret_scanning][status]=enabled' \
+  -f 'security_and_analysis[secret_scanning_push_protection][status]=enabled'
+```
 
 If `gh` lacks admin rights, print the commands for the owner instead. Agents run with a GitHub
 App or fine-grained token without Administration or Workflows permission, so they can never

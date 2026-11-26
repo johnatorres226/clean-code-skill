@@ -33,7 +33,8 @@ import sys
 import tomllib
 from pathlib import Path
 
-FAST_GATES = ("format", "lint")
+FAST_GATES = ("format", "lint", "secrets")
+COMMIT_GATES = ("secrets",)  # scan the staged diff: a full check has nothing staged
 SHELL_OPS = {"&&", "||", ";", "|"}
 ALWAYS_ALLOWED_MSG = re.compile(r"^(Merge |Revert |fixup! |squash! |amend! )")
 
@@ -95,7 +96,8 @@ def size_problem(numstat: str, cfg: dict, limit_key: str = "commits") -> str | N
 
 
 def cmd_check(cfg: dict, fast: bool) -> int:
-    return run_gates({n: c for n, c in cfg.get("gates", {}).items() if not fast or n in FAST_GATES})
+    wanted = (lambda n: n in FAST_GATES) if fast else (lambda n: n not in COMMIT_GATES)
+    return run_gates({n: c for n, c in cfg.get("gates", {}).items() if wanted(n)})
 
 
 def run_gates(gates: dict) -> int:
