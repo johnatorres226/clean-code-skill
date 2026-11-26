@@ -27,11 +27,11 @@ auto_merge   = ["docs/research/", "README.md"]  # skills/ and agents/ are the pr
 [review]                               # tiers by consequence (docs/adr/0002)
 check  = "verdict"
 app_id = 0
-auto_merge_max_lines = 50
+auto_merge_max_lines = 1000            # team tool; product files are .md, so paths are listed
 human_paths = ["docs/adr/", "GLOSSARY.md", "**/CLAUDE.md"]  # decisions, vocabulary, agent settings
 
 [size]
-exclude = ["*.lock", "*-lock.json", "results/*", "tools/evals/benchmarks/*", "tools/evals/review/*"]
+exclude = ["*.lock", "*-lock.json", "results/*", "tools/evals/benchmarks/*", "tools/evals/review/*", "docs/research/*"]
 
 [gates]
 format    = ""
