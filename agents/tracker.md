@@ -25,12 +25,14 @@ for what the brief asks, stop and return `blocked: adapter has no command for <o
 | Update the map index | Append one line, `- #<n> <title>: <one-line outcome>`, to the map's Decisions-so-far section. Change nothing else in the map body. |
 | Ready to release | List standalone tickets whose PRs are merged into the integration branch but not yet released, and open ones whose PRs are approved. |
 | Stale check | List open tickets with no activity in the number of days the brief gives. Report them; change nothing. |
+| Stale branches | List remote branches with no open PR and no commit in the number of days the brief gives. Report them; delete nothing: paused work is not abandoned work. |
 
 Write the body the brief gives, word for word. If the brief leaves a required field out (title,
 which ticket, which label), return `need: <field>`; do not guess.
 
 ## Never
 
+- Delete a branch.
 - Comment on a ticket or PR. Comments belong to whoever is working the ticket.
 - Close or reopen a ticket. Merged PRs close their own tickets.
 - Edit a ticket body, except the map's index line above.

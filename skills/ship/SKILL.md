@@ -69,6 +69,10 @@ for human review, Autopilot-full otherwise. Merge with the method in `[branches]
 atomic commits): `gh pr merge --rebase --delete-branch`. Never force-push or push directly to a
 protected branch — the guard hook blocks it.
 
+Once merged, clean up locally: `git switch dev && git pull`, then `git branch -D <branch>` for the
+branch you just merged (a rebase merge rewrites its commits, so `-d` refuses), and `git worktree
+remove <path>` if it had one. The remote branch is deleted on merge (setup-standards step 4).
+
 ## 6. Release
 
 A release promotes reviewed work (`docs/adr/0003` in this plugin's repo). Only `dev` merges to
