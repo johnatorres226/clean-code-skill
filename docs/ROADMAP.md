@@ -62,7 +62,8 @@ Next:
 4. Release rules in `standards.py`: recognise release PRs, check proof of review and whole specs,
    run the release-only check list, honour the release approval setting.
 5. Validation: seeded defects, false findings on clean PRs, one-way-door recall, an adversarial
-   run, reverts per tier.
+   run, reverts per tier. Harness built (`tools/review_eval.py`, 18 synthetic cases); first Opus
+   and Haiku runs pending. Reverts per tier need real PR history.
 
 ## L2: intake (sketch)
 
