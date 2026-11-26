@@ -24,6 +24,10 @@ rewriting), lint, typecheck, test. A gate the stack has no tool for stays `""`. 
 linter or formatter at all, propose the ecosystem default once (ruff, eslint+prettier, gofmt+vet,
 clippy+rustfmt, clang-format+clang-tidy, checkstyle) and add it only on a yes.
 
+**A new project with no manifests yet:** ask which stack it will use and fill the gates with that
+stack's commands. Most pass on an empty tree (`ruff check .`), and a gate left blank now is
+rarely filled later.
+
 Propose a secret scanner for the `secrets` gate the same way: `gitleaks git --pre-commit --staged
 --redact` (gitleaks 8.19+). It runs at every commit, because a committed secret needs a history
 rewrite; every machine needs the binary. On GitHub, push protection (step 4) is the backstop.
