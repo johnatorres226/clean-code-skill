@@ -39,9 +39,23 @@ CLAUDE.standards.md                     → appended to CLAUDE.md in step 5
 Fill `[roles]` in `standards.toml` (senior team, `guarded` paths, who reviews each `area`, the
 `auto_merge` allow-list of docs-only paths), `[tests].holdout` (acceptance tests agents may not
 rewrite) and `[review]` (the human-review paths and content patterns for this codebase, and the
-reviewer agent's App id once it exists). Check the floor with `python .githooks/standards.py tier
-<base>` on a few past PRs: a consequential one it rates below human review means a missing
-trigger. Then generate
+reviewer agent's App id once it exists).
+
+**Project type.** Ask once: who depends on this? The answer sets release approval and how
+freely docs merge. Docs that describe code can drift from it, so the reviewer checks their
+claims against the code at every tier.
+
+| Answer | `[release].approval` | `[roles].auto_merge` | `auto_merge_max_lines` | `[size].exclude` adds |
+|---|---|---|---|---|
+| Only me | `auto` | `docs/`, `*.md` | 1000 | `docs/*`, `*.md` |
+| My team | `tiered` | `docs/`, `*.md` | 1000 | `docs/*`, `*.md` |
+| Others (a product or service) | `human` | notes only: `docs/research/`, `CHANGELOG.md` | 50 | nothing |
+
+If the product itself is Markdown (skills, prompts, agent definitions), list docs paths
+instead of `*.md`.
+
+Check the floor with `python .githooks/standards.py tier <base>` on a few past PRs: a
+consequential one it rates below human review means a missing trigger. Then generate
 `.github/CODEOWNERS` with `python .githooks/standards.py codeowners > .github/CODEOWNERS`.
 
 Then activate the hooks: `git config core.hooksPath .githooks`. This is per-clone, so it also

@@ -155,8 +155,10 @@ def test_release_proof_of_review():
 def test_tier_floor():
     def floor(files, added=None):
         return s.tier_floor(files, added or {}, CFG)
-    assert floor(["docs/guide.md"], {"docs/guide.md": ["hi"]}) == ("auto-merge", [])
-    assert floor(["docs/guide.md"], {"docs/guide.md": ["x"] * 51})[0] == "agent-merge"  # over the cap
+    assert floor(["docs/research/a.md"], {"docs/research/a.md": ["hi"]}) == ("auto-merge", [])
+    assert floor(["docs/research/a.md"], {"docs/research/a.md": ["x"] * 51})[0] == "agent-merge"  # over the cap
+    assert floor(["docs/guide.md"], {"docs/guide.md": ["hi"]})[0] == "agent-merge"  # product docs
+    assert floor(["docs/adr/0004-x.md"])[0] == "human-review"  # decisions
     assert floor(["src/app.py", "docs/a.md"])[0] == "agent-merge"  # default tier
     tier, why = floor(["db/migrations/0042.py"])
     assert tier == "human-review" and why == ["human-review: db/migrations/0042.py — path **/migrations/**"]
