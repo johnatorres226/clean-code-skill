@@ -38,6 +38,9 @@ def test_branches():
     assert s.head_problem("feat/export", CFG) is None
     assert s.head_problem("dev", CFG) is None  # release PR dev -> main
     assert "must start" in s.head_problem("patch-1", CFG)
+    tag = "refs/tags/v1 abc refs/tags/v1 0000\n"
+    assert s.cmd_pre_push(CFG, tag) == 0  # a tag is not a branch: release tags push freely
+    assert s.cmd_pre_push(CFG, tag + "refs/heads/wip abc refs/heads/wip 0000\n") != 0
 
 
 def test_guard():
