@@ -85,7 +85,8 @@ line; a `pass` without evidence is a `concern`.
 
 **Tier.** Start from the floor; you may only raise it.
 
-- Any finding moves auto-merge to agent merge.
+- Any `issue` finding moves auto-merge to agent merge; suggestions, questions and nitpicks do
+  not.
 - Human review when a trigger matches; name each one:
   `human-review: <file> — <what> (<why>)`.
   - **Paths and content:** `standards.py tier` reports them from `[review]`. Without it, use:
