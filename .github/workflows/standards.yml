@@ -15,9 +15,14 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Use the base branch's rules (a PR cannot loosen its own checks)
-        if: github.event_name == 'pull_request'
-        run: git checkout origin/${{ github.base_ref }} -- standards.toml skills/setup-standards/templates/.githooks/standards.py || echo "no rules on base yet"
+      - name: Rules from the base branch, code from the PR (a PR cannot loosen its own checks)
+        env:                           # the PR's standards.py stays in the tree, so its own tests test it
+          BASE: ${{ github.base_ref }}  # empty on push
+        run: |
+          cp skills/setup-standards/templates/.githooks/standards.py "$RUNNER_TEMP/standards.py"
+          if [ -n "$BASE" ]; then
+            git show "origin/$BASE:skills/setup-standards/templates/.githooks/standards.py" > "$RUNNER_TEMP/base.py" && mv "$RUNNER_TEMP/base.py" "$RUNNER_TEMP/standards.py" && git checkout "origin/$BASE" -- standards.toml || echo "no rules on base yet"
+          fi
       - name: Size exemption counts only when someone other than the author applied it
         id: exempt
         if: contains(github.event.pull_request.labels.*.name, 'size-exempt')
@@ -33,9 +38,9 @@ jobs:
         env:
           HEAD_REF: ${{ github.head_ref }}  # via env, never inline: branch names and bodies are untrusted
           PR_BODY: ${{ github.event.pull_request.body }}
-        run: printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md" && python3 skills/setup-standards/templates/.githooks/standards.py range origin/${{ github.base_ref }} --branch "$HEAD_REF" --body-file "$RUNNER_TEMP/pr-body.md" ${{ steps.exempt.outputs.flag }}
+        run: printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md" && python3 "$RUNNER_TEMP/standards.py" range origin/${{ github.base_ref }} --branch "$HEAD_REF" --body-file "$RUNNER_TEMP/pr-body.md" ${{ steps.exempt.outputs.flag }}
       - name: Gates
-        run: python3 skills/setup-standards/templates/.githooks/standards.py check
+        run: python3 "$RUNNER_TEMP/standards.py" check
       - name: Skill regression gate (token cost, SkillEvaluator quality, self-checks)
         run: |
           pip install --quiet skillevaluator
