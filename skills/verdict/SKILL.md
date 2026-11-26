@@ -81,7 +81,7 @@ line; a `pass` without evidence is a `concern`.
 | security | Pass A security, and the scanners ran and passed |
 | tests | Do tests reach the changed code and fail if it is wrong? None weakened or deleted? |
 | maintainability | Passes B and C, then names and clarity |
-| docs | Changed behavior has its docs, changelog and contract updates |
+| docs | Changed behavior has its docs, changelog and contract updates; every command, flag, path and name the docs mention exists in the code |
 
 **Tier.** Start from the floor; you may only raise it.
 
