@@ -41,6 +41,7 @@ One line per entry — enough to recognize a smell, not enough to fix it. Grep t
 - `C3` — Redundant comment
 - `C4` — Poorly written comment
 - `C5` — Commented-out code
+- `C6` — Comment explaining our own surprise
 
 **Environment**
 
@@ -149,6 +150,11 @@ rewrite or delete.
 **C5 — Commented-out code.** An abomination. Nobody who follows you will dare delete it, so it
 accumulates and rots, and readers waste time wondering if it matters. *Fix:* delete it. Git
 remembers.
+
+**C6 — Comment explaining our own surprise.** `# not thread-safe`, `# do not remove`, `# hack`, a
+long justification: the code we own does something a reader would not expect, and prose apologizes
+for it. *Fix:* rename, type, test or restructure until the behavior is obvious; keep a comment only
+when the cause is outside our code (a vendor, platform or protocol). Flag it `MUST KILL: <symbol>`.
 
 ## Environment
 

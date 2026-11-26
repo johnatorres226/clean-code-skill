@@ -15,13 +15,13 @@ Only these stay. When you are not sure one applies, the comment goes.
 1. Legal or license headers.
 2. Behavior forced by something we cannot reshape: a dependency, platform, vendor or protocol.
 3. Doc comments that define a public API contract.
-4. Issue or RFC links explaining a constraint the code cannot express, including a known limit
-   with its upgrade path.
+4. Links to an issue, RFC or source explaining a constraint or algorithm the code cannot express;
+   a TODO or known limit only with an owner, an exit condition and an issue.
 5. Lint suppressions whose rule is faulty, pedantic or style-only.
 
-A surprise in our own code is not on the list. The comment goes and the symbol it explains is the
-target: `MUST KILL: <symbol>`, to be renamed, extracted, typed or restructured until the behavior
-is obvious without prose.
+A surprise in our own code (smell C6) is not on the list. The comment goes and the symbol it
+explains is the target: `MUST KILL: <symbol>`, to be renamed, extracted, typed or restructured
+until the behavior is obvious without prose.
 
 ## Read before judging
 

@@ -12,7 +12,8 @@ only comment guaranteed accurate is the one that doesn't exist.
 ## Contents
 
 - [The decision procedure](#the-decision-procedure)
-- [Good comments](#good-comments)
+- [Comments that stay](#comments-that-stay)
+- [Reshape instead](#reshape-instead)
 - [Bad comments](#bad-comments)
 - [API documentation](#api-documentation)
 - [Placement](#placement)
@@ -52,29 +53,37 @@ if is_positive and is_within_cap and is_eligible_tier: ...
 **4. Is the comment apologizing for a design flaw?** `# hack because the API is broken` — fix the
 design, or wrap the broken API behind a clean adapter and comment *there*, once.
 
-**5. Only now: write the comment — and explain *why*, not *what*.** The reader can see the loop.
-What they cannot see is the reasoning, the constraint, the incident that made this necessary.
+**5. Only now: is it on the keep-list below?** Then write it, and explain *why*, not *what*. If
+not, the surprise is in our own code: reshape the code (see "Reshape instead") and write nothing.
 
-## Good comments
+## Comments that stay
 
-These earn their place.
+Only these. The reviewer's comments pass uses the same list, so anything else will be flagged.
 
 - **Legal / provenance.** Copyright headers, license identifiers, attribution for adapted
   algorithms. Point to the LICENSE file rather than pasting a license.
-- **Intent / rationale.** `# Poll instead of file-watch: the data dir is an NFS mount and watch
-  events don't fire for other hosts' writes. See INFRA-4127.`
-- **Warning of consequences.** `# Not thread-safe: mutates the shared cache without locking.
-  Callers must hold registry_lock.` or `# Takes ~15 min against the prod snapshot; excluded from
-  the fast suite.`
-- **Clarifying something you cannot change.** A cryptic third-party return value you cannot
-  rename.
-- **Amplification.** Flagging something that looks removable but is load-bearing: `# strip() is
-  essential: a leading space makes the downstream parser drop the record silently.`
-- **TODO with an owner and an exit condition.** `# TODO(rlee, 2026-11): remove once the v1
-  endpoint is decommissioned (PLAT-882).` A TODO without both is litter. Grep for them each sprint.
-- **Non-obvious algorithmic justification**, with its preconditions: `# Round up to power of two
-  (Hacker's Delight §3-2). Undefined for v == 0; excluded by the caller's precondition.`
+- **Behavior forced by something we cannot reshape** — a dependency, platform, vendor, protocol or
+  device: `# Poll instead of file-watch: the data dir is an NFS mount and watch events don't fire
+  for other hosts' writes.` A cryptic third-party value you cannot rename belongs here too.
 - **Public API documentation.** See its own section below.
+- **Links to an issue, RFC or source** for a constraint or algorithm the code cannot express:
+  `# Round up to power of two (Hacker's Delight §3-2).` A TODO or a known limit qualifies only with
+  an owner, an exit condition and an issue: `# TODO(rlee): remove with the v1 endpoint (PLAT-882).`
+- **Lint suppressions whose rule is faulty, pedantic or style-only**, with the reason. Never
+  suppress a rule that catches real bugs; fix the code.
+
+## Reshape instead
+
+A surprise in our own code is a design problem, not a documentation one. These used to be "good"
+comments; each has a reshape that cannot rot.
+
+| Instead of | Do |
+|---|---|
+| `# Not thread-safe: callers must hold registry_lock` | Name or type it: `UnsyncedCache`, or take the lock inside |
+| `# strip() is essential: the parser drops a leading space` | Pin it with a test: `parser_rejects_leading_space` |
+| `# Takes ~15 min; excluded from the fast suite` | Mark it in the test runner: a `slow` tag the suite filters on |
+| `# We chose X over Y because…` | Put the why in the commit message or an ADR; the code shows X |
+| `# Undefined for v == 0` | Enforce the precondition: assert, raise, or a type that excludes 0 |
 
 ## Bad comments
 
