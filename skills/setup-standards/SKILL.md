@@ -66,8 +66,9 @@ Check the floor with `python .githooks/standards.py tier <base>` on a few past P
 consequential one it rates below human review means a missing trigger. Then generate
 `.github/CODEOWNERS` with `python .githooks/standards.py codeowners > .github/CODEOWNERS`.
 
-Then activate the hooks: `git config core.hooksPath .githooks`. This is per-clone, so it also
-goes in the README's setup steps for humans.
+Then activate the hooks: `git config core.hooksPath .githooks`, and drop deleted branches on
+fetch: `git config fetch.prune true`. Both are per-clone, so they also go in the README's setup
+steps for humans.
 
 ## 3. Branches
 
@@ -96,6 +97,9 @@ source of rules remains.
 Releases: create a `release` environment with the senior team as required reviewers,
 "Prevent self-review" on, admin bypass off, and deployments limited to `main`. Keep deploy
 secrets in that environment, never in repository secrets.
+
+Delete merged branches, whoever merges them (same confirmation):
+`gh api -X PATCH repos/{owner}/{repo} -F delete_branch_on_merge=true`.
 
 Security settings, same confirmation (push protection is free on public repos):
 
