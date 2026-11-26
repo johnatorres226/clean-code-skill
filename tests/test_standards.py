@@ -98,7 +98,8 @@ def test_pr_rules():
     assert s.holdout_problem(["src/export.py", "tests/unit/test_export.py"], CFG) is None
     assert "own PR" in s.holdout_problem(["src/export.py", "tests/acceptance/test_export.py"], CFG)
     # a release (dev -> main) is a promotion: no size, ticket-link or holdout rules (ADR 0003)
-    assert s.pr_problem(CFG, "no-such-base", {"branch": "dev", "body": "", "size": True}) is None
+    # nor are its commits rechecked: each passed in its ticket PR, and `release` proves that
+    assert s.cmd_range(CFG, "no-such-base", {"branch": "dev", "body": "", "size": True}) == 0
 
 
 def fake_github(responses):
