@@ -197,6 +197,8 @@ def test_hooks_end_to_end():
         assert std("staged").returncode == 1, "commit on main must be blocked"
 
         run("git", "commit", "-q", "-m", "chore: init")
+        run("git", "checkout", "-q", "-b", "wip")
+        assert std("staged").returncode == 1, "commit on a misnamed branch must be blocked"
         run("git", "checkout", "-q", "-b", "feat/x")
         (Path(tmp) / "a.txt").write_text("hello ←\n", encoding="utf-8")  # byte 0x90: cp1252 cannot decode it
         run("git", "add", "-A")

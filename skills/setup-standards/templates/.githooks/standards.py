@@ -2,7 +2,8 @@
 """Enforce the repo's standards.toml. Stdlib only; one file so it can be vendored into .githooks/.
 
   check [--fast]       run the gates (fast: format + lint only)
-  staged               pre-commit: block commits on protected branches and oversized commits
+  staged               pre-commit: block commits on protected or misnamed branches, oversized
+                       commits; run the fast gates
   commit-msg FILE      commit-msg: Conventional Commit format
   pre-push             pre-push: block pushes to protected branches, bad branch names; run check
   range BASE [--no-size] [--branch NAME] [--body-file F]
@@ -113,6 +114,8 @@ def cmd_staged(cfg: dict) -> int:
     branch = git("branch", "--show-current")
     if branch in cfg["branches"]["protected"]:
         return fail(f"no direct commits to '{branch}'; branch from '{cfg['branches']['integration']}'")
+    if branch and (named := branch_problem(branch, cfg)):  # no branch = detached HEAD, e.g. a rebase
+        return fail(named)
     problem = size_problem(git("diff", "--cached", "--numstat"), cfg)
     return fail(f"staged commit: {problem}") if problem else cmd_check(cfg, fast=True)
 
@@ -127,7 +130,7 @@ def branch_problem(branch: str, cfg: dict) -> str | None:
     if branch in b["protected"]:
         return f"push to protected branch '{branch}' — open a PR instead"
     if not branch.startswith(tuple(b["prefixes"])):
-        return f"branch '{branch}' must start with one of {b['prefixes']}"
+        return f"branch '{branch}' must start with one of {b['prefixes']}; rename: git branch -m <type>/<slug>"
     return None
 
 
