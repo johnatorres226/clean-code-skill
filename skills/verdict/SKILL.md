@@ -1,6 +1,6 @@
 ---
 name: verdict
-description: Review a PR, MR or branch diff and decide its verdict. Seven checks (intent, consequence, correctness, security, tests, maintainability, docs), each pass, concern or fail with evidence, plus the merge tier and one machine-readable verdict line. Runs its own two-pass hunt, or verifies other reviewers' findings one by one. Use when reviewing a PR, verifying review findings, reviewing a release PR, or when asked for a "verdict" or a "review".
+description: Review a PR, MR or branch diff and decide its verdict. Seven checks (intent, consequence, correctness, security, tests, maintainability, docs), each pass, concern or fail with evidence, plus the merge tier and one machine-readable verdict line. Runs its own three-pass hunt, or verifies other reviewers' findings one by one. Use when reviewing a PR, verifying review findings, reviewing a release PR, or when asked for a "verdict" or a "review".
 version: 1.0.0
 metadata:
   author: johnatorres226
