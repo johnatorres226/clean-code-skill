@@ -31,7 +31,7 @@ auto_merge_max_lines = 50
 human_paths = ["docs/adr/", "GLOSSARY.md", "**/CLAUDE.md"]  # decisions, vocabulary, agent settings
 
 [size]
-exclude = ["*.lock", "*-lock.json", "results/*", "tools/evals/benchmarks/*"]
+exclude = ["*.lock", "*-lock.json", "results/*", "tools/evals/benchmarks/*", "tools/evals/review/*"]
 
 [gates]
 format    = ""
