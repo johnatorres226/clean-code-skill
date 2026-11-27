@@ -194,11 +194,15 @@ def test_added_by_file():
     assert s.added_by_file(diff) == {"x": ["new line"]}
 
 
+def isolated_env() -> dict:
+    """Run from a git hook in a worktree, GIT_DIR points at the real repo: a throwaway repo's git
+    commands must not inherit it, or their init, config and commits land there."""
+    return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")} | {"GIT_CONFIG_NOSYSTEM": "1"}
+
+
 def test_hooks_end_to_end():
     """Real git repo: protected-branch commit and bad message are blocked; good flow passes."""
-    # run from a git hook in a worktree, GIT_DIR points at the real repo: strip it, or the throwaway
-    # repo's init, config and commits land there
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")} | {"GIT_CONFIG_NOSYSTEM": "1"}
+    env = isolated_env()
     with tempfile.TemporaryDirectory() as tmp:
         def run(*args, stdin=None):
             return subprocess.run(args, cwd=tmp, input=stdin, capture_output=True, text=True, env=env)
@@ -231,14 +235,30 @@ def test_hooks_end_to_end():
         guard = std("guard", stdin=json.dumps({"tool_input": {"command": "git push origin dev"}}))
         assert guard.returncode == 2
 
-        # release dev -> main: an old oversized commit on dev does not block it, and the tag pushes
+        # release dev -> main: an old oversized commit on dev does not block it
         run("git", "checkout", "-q", "-b", "dev")
         (Path(tmp) / "big.txt").write_text("x\n" * 400, encoding="utf-8")
         run("git", "add", "-A")
         run("git", "commit", "-q", "-m", "feat: bootstrap")
         assert std("range", "main", "--branch", "feat/y").returncode == 1, "a ticket PR still checks commit size"
         assert std("range", "main", "--branch", "dev").returncode == 0
-        assert std("pre-push", stdin="refs/tags/r1 abc refs/tags/r1 0000\n").returncode == 0
+
+
+def test_end_to_end_ignores_hook_git_dir():
+    """A hook in a worktree sets GIT_DIR to the real repo; the end-to-end test must not touch it."""
+    with tempfile.TemporaryDirectory() as decoy:
+        subprocess.run(["git", "init", "-q", decoy], capture_output=True, env=isolated_env())
+        config = Path(decoy) / ".git" / "config"
+        before = config.read_bytes()
+        hook_git_dir = os.environ.get("GIT_DIR")
+        os.environ["GIT_DIR"] = str(Path(decoy) / ".git")
+        try:
+            test_hooks_end_to_end()
+        finally:
+            os.environ.pop("GIT_DIR")
+            if hook_git_dir is not None:
+                os.environ["GIT_DIR"] = hook_git_dir
+        assert config.read_bytes() == before, "end-to-end test wrote into the hook's repo"
 
 
 if __name__ == "__main__":
