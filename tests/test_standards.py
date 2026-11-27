@@ -1,4 +1,5 @@
 """Self-check for standards.py. Run: python tests/test_standards.py (exits non-zero on failure)."""
+
 import json
 import os
 import subprocess
@@ -64,7 +65,7 @@ def test_guard():
     assert s.guard_problem("git config core.hooksPath .githooks", CFG) is None
     assert s.guard_problem("git commit -m x && git log -n 3", CFG) is None
     assert s.guard_problem('git commit -m "fix: stop passing -n to the parser"', CFG) is None
-    assert s.guard_problem('bash -c "git commit -m \'docs: explain --no-verify policy\'"', CFG) is None
+    assert s.guard_problem("bash -c \"git commit -m 'docs: explain --no-verify policy'\"", CFG) is None
 
 
 def test_codeowners():
@@ -150,9 +151,13 @@ def test_senior_approval_of_head_commit():
     fake_github({REVIEW: {"head": {"sha": "head"}}, REVIEW + "/reviews?per_page=100": reviews})
     assert s.approval_problem("7", solo) is None
     assert "senior" in s.approval_problem("7", CFG)  # @org/seniors: membership unreadable -> fail closed
-    fake_github({"repos/{owner}/{repo}/pulls/7": {"head": {"sha": "head"}},
-                 REVIEW + "/reviews?per_page=100": reviews,
-                 "orgs/org/teams/seniors/memberships/bo": {"state": "active"}})
+    fake_github(
+        {
+            "repos/{owner}/{repo}/pulls/7": {"head": {"sha": "head"}},
+            REVIEW + "/reviews?per_page=100": reviews,
+            "orgs/org/teams/seniors/memberships/bo": {"state": "active"},
+        }
+    )
     assert s.approval_problem("7", CFG) is None
 
 
@@ -170,8 +175,11 @@ def test_release_proof_of_review():
     reviewed = {**CFG, "review": {**CFG["review"], "app_id": 42}}
     assert "'verdict'" in s.proof_problem("abc12345", reviewed)  # verdict required once its App exists
     # solo repo: an admin-bypass merge by a senior is the review (they cannot approve their own PR)
-    failed = {pulls: merged, runs: {"check_runs": [{"conclusion": "failure"}]},
-              "repos/{owner}/{repo}/pulls/9": {"merged_by": {"login": "Bo"}}}
+    failed = {
+        pulls: merged,
+        runs: {"check_runs": [{"conclusion": "failure"}]},
+        "repos/{owner}/{repo}/pulls/9": {"merged_by": {"login": "Bo"}},
+    }
     solo = {**CFG, "roles": {**CFG["roles"], "senior": ["@bo"], "admin_bypass": True}}
     fake_github(failed)
     assert s.proof_problem("abc12345", solo) is None
@@ -183,6 +191,7 @@ def test_release_proof_of_review():
 def test_tier_floor():
     def floor(files, added=None):
         return s.tier_floor(files, added or {}, CFG)
+
     assert floor(["docs/research/a.md"], {"docs/research/a.md": ["hi"]}) == ("auto-merge", [])
     assert floor(["docs/research/a.md"], {"docs/research/a.md": ["x"] * 51})[0] == "agent-merge"  # over the cap
     assert floor(["docs/guide.md"], {"docs/guide.md": ["hi"]})[0] == "agent-merge"  # product docs
@@ -202,8 +211,10 @@ def test_tier_floor():
 
 
 def test_added_by_file():
-    diff = ("diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -0,0 +1 @@\n+new line\n"
-            "diff --git a/y b/y\n--- a/y\n+++ /dev/null\n@@ -1 +0,0 @@\n-gone\n")
+    diff = (
+        "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -0,0 +1 @@\n+new line\n"
+        "diff --git a/y b/y\n--- a/y\n+++ /dev/null\n@@ -1 +0,0 @@\n-gone\n"
+    )
     assert s.added_by_file(diff) == {"x": ["new line"]}
 
 
@@ -231,7 +242,8 @@ def init_on_main(repo: SimpleNamespace) -> None:
     repo.run("git", "config", "user.email", "t@example.com")
     repo.run("git", "config", "user.name", "t")
     (repo.path / "standards.toml").write_text(
-        (TEMPLATES / "standards.toml").read_text(encoding="utf-8"), encoding="utf-8")
+        (TEMPLATES / "standards.toml").read_text(encoding="utf-8"), encoding="utf-8"
+    )
     repo.run("git", "add", "-A")
     assert repo.std("staged").returncode == 1, "commit on main must be blocked"
     repo.run("git", "commit", "-q", "-m", "chore: init")

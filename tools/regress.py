@@ -12,6 +12,7 @@
 
 Exit 1 on any regression beyond tolerance. Tolerances live next to the metrics they guard.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,14 +28,21 @@ from skill_audit import measure  # noqa: E402
 
 # (metric, direction, tolerance, kind). direction "max": higher is worse; "min": lower is worse.
 # kind "rel": fraction of the baseline (absorbs run-to-run noise at n=16 per arm); "abs": units.
-STATIC_RULES = [("skill_tokens", "max", 0.10, "rel"), ("reference_tokens", "max", 0.10, "rel"),
-                ("skillevaluator_score", "min", 2.0, "abs")]
+STATIC_RULES = [
+    ("skill_tokens", "max", 0.10, "rel"),
+    ("reference_tokens", "max", 0.10, "rel"),
+    ("skillevaluator_score", "min", 2.0, "abs"),
+]
 BENCH_RULES = [
-    ("phase1.tests_pass", "min", 0.0, "abs"), ("phase1.commits_compliant", "min", 0.05, "abs"),
+    ("phase1.tests_pass", "min", 0.0, "abs"),
+    ("phase1.commits_compliant", "min", 0.05, "abs"),
     ("phase1.protected_branches_written", "max", 0.0, "abs"),
-    ("phase1.lint_weighted", "max", 0.25, "rel"), ("phase1.cognitive_total", "max", 0.25, "rel"),
-    ("phase1.ruff_violations", "max", 0.50, "rel"), ("phase1.cost_usd", "max", 0.20, "rel"),
-    ("phase2.followup_pass", "min", 0.10, "abs"), ("phase2.original_still_pass", "min", 0.05, "abs"),
+    ("phase1.lint_weighted", "max", 0.25, "rel"),
+    ("phase1.cognitive_total", "max", 0.25, "rel"),
+    ("phase1.ruff_violations", "max", 0.50, "rel"),
+    ("phase1.cost_usd", "max", 0.20, "rel"),
+    ("phase2.followup_pass", "min", 0.10, "abs"),
+    ("phase2.original_still_pass", "min", 0.05, "abs"),
     ("phase2.cost_usd", "max", 0.20, "rel"),
 ]
 
@@ -93,8 +101,11 @@ def report(label: str, rows: list[tuple]) -> list[str]:
 
 def flatten_bench(summary: dict) -> dict:
     """{'phase1': {'cost_usd': {'standards': x}}} -> {'phase1.cost_usd': x} (standards arm)."""
-    flat = {f"{phase}.{key}": arms.get("standards")
-            for phase in ("phase1", "phase2") for key, arms in summary.get(phase, {}).items()}
+    flat = {
+        f"{phase}.{key}": arms.get("standards")
+        for phase in ("phase1", "phase2")
+        for key, arms in summary.get(phase, {}).items()
+    }
     flat["models"] = summary.get("models")
     return flat
 
@@ -129,8 +140,10 @@ def bench_failures(base: dict, variant: str) -> list[str]:
     current, baseline = bench_summary(variant), base.get("bench", {})
     failures = []
     if current["models"] != baseline.get("models"):
-        failures.append(f"model mismatch: baseline {baseline.get('models')} vs {current['models']} "
-                        "(a cross-model comparison is not a regression test)")
+        failures.append(
+            f"model mismatch: baseline {baseline.get('models')} vs {current['models']} "
+            "(a cross-model comparison is not a regression test)"
+        )
     return failures + report(f"bench {variant}", compare(current, baseline, BENCH_RULES))
 
 
