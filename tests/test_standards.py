@@ -64,7 +64,7 @@ def test_guard():
     assert s.guard_problem('bash -c "git commit -m \'docs: explain --no-verify policy\'"', CFG) is None
 
 
-def test_codeowners_and_ruleset():  # noqa: PLR0915
+def test_codeowners_and_ruleset():
     owners = s.codeowners(CFG).splitlines()
     assert "/standards.toml @org/seniors" in owners  # guarded
     assert "/tests/acceptance/ @org/seniors" in owners  # holdout
@@ -200,7 +200,7 @@ def isolated_env() -> dict:
     return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")} | {"GIT_CONFIG_NOSYSTEM": "1"}
 
 
-def test_hooks_end_to_end():  # noqa: PLR0915
+def test_hooks_end_to_end():
     """Real git repo: protected-branch commit and bad message are blocked; good flow passes."""
     env = isolated_env()
     with tempfile.TemporaryDirectory() as tmp:
@@ -233,7 +233,7 @@ def test_hooks_end_to_end():  # noqa: PLR0915
         assert "tier: agent-merge" in std("tier", "main").stdout
         assert std("pre-push", stdin="refs/heads/feat/x abc refs/heads/main def\n").returncode == 1
         guard = std("guard", stdin=json.dumps({"tool_input": {"command": "git push origin dev"}}))
-        assert guard.returncode == 2  # noqa: PLR2004
+        assert guard.returncode == 2
 
         # release dev -> main: an old oversized commit on dev does not block it
         run("git", "checkout", "-q", "-b", "dev")
@@ -246,7 +246,7 @@ def test_hooks_end_to_end():  # noqa: PLR0915
 
 def test_end_to_end_ignores_hook_git_dir():
     """A hook in a worktree sets GIT_DIR to the real repo; the end-to-end test must not touch it."""
-    with tempfile.TemporaryDirectory() as decoy:  # noqa: PLR1702
+    with tempfile.TemporaryDirectory() as decoy:
         subprocess.run(["git", "init", "-q", decoy], capture_output=True, env=isolated_env())
         config = Path(decoy) / ".git" / "config"
         before = config.read_bytes()

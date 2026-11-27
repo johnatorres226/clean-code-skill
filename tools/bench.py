@@ -105,7 +105,7 @@ def git_init(work: Path) -> None:
 
 
 def fetch() -> None:
-    for slug in TASKS:  # noqa: PLR1702
+    for slug in TASKS:
         dest = TASKS_DIR / slug
         dest.mkdir(parents=True, exist_ok=True)
         base = f"repos/exercism/python/contents/exercises/practice/{slug}"
@@ -122,7 +122,7 @@ def fetch() -> None:
 # Agent invocation and shared scoring
 # --------------------------------------------------------------------------------------
 
-def run_claude(cwd: Path, text: str, plugin: bool, model: str | None = None,  # noqa: FBT001, PLR0913
+def run_claude(cwd: Path, text: str, plugin: bool, model: str | None = None,
                tools: str = "Read,Write,Edit,Bash,PowerShell,Glob,Grep,Skill") -> list[dict]:
     cmd = [shutil.which("claude") or "claude", "-p", text, "--output-format", "stream-json",
            "--verbose", "--setting-sources", "project", "--strict-mcp-config", "--allowedTools", tools]
@@ -262,7 +262,7 @@ def save(out: Path, result: dict, events: list[dict]) -> None:
 # Phase 2: change cost, by a neutral agent
 # --------------------------------------------------------------------------------------
 
-def phase2(slug: str, arm: str, rep: int) -> dict | None:  # noqa: PLR0915
+def phase2(slug: str, arm: str, rep: int) -> dict | None:
     out = Cfg.out() / "followup" / arm / f"{slug}-r{rep}.json"
     if done := finished(out):
         return done
@@ -309,7 +309,7 @@ def hidden_suites(slug: str, upto: int) -> list[str]:
     return [f"{module(slug)}_test"] + [f"followup{'' if k == 1 else k}_test" for k in range(1, upto + 1)]
 
 
-def chain_step(slug: str, arm: str, rep: int, k: int) -> dict | None:  # noqa: PLR0913, PLR0915
+def chain_step(slug: str, arm: str, rep: int, k: int) -> dict | None:
     """Follow-up k on top of step k-1's code. A regression is a hidden suite that passed before
     this step and fails after it; research shows multi-step chains expose what one step cannot."""
     out = Cfg.out() / step_dir(k) / arm / f"{slug}-r{rep}.json"
@@ -412,7 +412,7 @@ def task_diffs(rows: list[dict], key: str) -> list[float]:
 def paired_ci(rows: list[dict], key: str) -> tuple[float, float, float] | None:
     """Mean per-task difference with a 95% percentile bootstrap CI over tasks."""
     diffs = task_diffs(rows, key)
-    if len(diffs) < 2:  # noqa: PLR2004
+    if len(diffs) < 2:
         return None
     rng = random.Random(0)
     boots = sorted(statistics.mean(rng.choices(diffs, k=len(diffs))) for _ in range(5000))
@@ -465,7 +465,7 @@ def table(title: str, rows: list[dict], keys: list[tuple[str, str]]) -> dict:
         a, b, p = mean(rows, "none", key), mean(rows, "standards", key), paired_p(rows, key)
         ci = paired_ci(rows, key)
         summary[key] = {"none": a, "standards": b, "p": p, "ci": ci}
-        fmt = lambda v: "—" if v is None else f"{v:,.2f}"  # noqa: E731
+        fmt = lambda v: "—" if v is None else f"{v:,.2f}"
         ci_text = "" if ci is None else f"   {ci[0]:+,.2f} [{ci[1]:+,.2f}, {ci[2]:+,.2f}]"
         print(f"  {label:<28}{fmt(a):>11}{fmt(b):>11}{'' if p is None else f'{p:.3f}':>8}{ci_text}")
     return summary
@@ -484,7 +484,8 @@ def report() -> None:
     if judged:
         wins = {w: sum(j["winner"] == w for j in judged) for w in ("standards", "none", "tie")}
         print(f"\nBLIND JUDGE ({JUDGE_MODEL}, order-consistent only): {wins} of {len(judged)}; "
-              f"mean score none {mean(judged, None, 'score_none')} vs standards {mean(judged, None, 'score_standards')}")  # noqa: E501
+              f"mean score none {mean(judged, None, 'score_none')}"
+              f" vs standards {mean(judged, None, 'score_standards')}")
         summary["judge"] = {"wins": wins, "n": len(judged), "score_none": mean(judged, None, "score_none"),
                             "score_standards": mean(judged, None, "score_standards")}
     (Cfg.out() / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -497,7 +498,7 @@ def safe(fn, *args):
         return None
 
 
-def main(argv: list[str]) -> int:  # noqa: PLR0915
+def main(argv: list[str]) -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=["fetch", "run", "followup", "chain", "judge", "all", "report"])
