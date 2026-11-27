@@ -107,7 +107,7 @@ def check_frontmatter(skill_md: Path, result: AuditResult) -> None:
     match = re.search(r"description:\s*(.+?)(?=\n[a-z_]+:|\Z)", block, re.S)
     if match:
         words = len(match.group(1).split())
-        if words < 25:  # noqa: PLR2004
+        if words < 25:
             result.issues.append(Issue("medium", "frontmatter",
                                        f"Description is only {words} words.",
                                        "Descriptions are the sole trigger signal — name concrete "
@@ -117,9 +117,10 @@ def check_frontmatter(skill_md: Path, result: AuditResult) -> None:
 def check_links(skill_dir: Path, result: AuditResult) -> None:
     """Every referenced file must exist, and every reference must be reachable."""
     linked: set[str] = set()
-    for md in sorted(skill_dir.rglob("*.md")):  # noqa: PLR1702
+    for md in sorted(skill_dir.rglob("*.md")):
         text = md.read_text(encoding="utf-8", errors="replace")
-        for target in re.findall(r"(?<![\w./-])references/([A-Za-z0-9._\-]+\.md)", text):  # own refs, not ../other-skill/  # noqa: E501
+        # own refs, not ../other-skill/
+        for target in re.findall(r"(?<![\w./-])references/([A-Za-z0-9._\-]+\.md)", text):
             linked.add(target)
             if not (skill_dir / "references" / target).exists():
                 result.issues.append(Issue(
@@ -134,7 +135,7 @@ def check_links(skill_dir: Path, result: AuditResult) -> None:
                     f"{md.relative_to(skill_dir)} points at missing scripts/{target}.", ""))
 
     ref_dir = skill_dir / "references"
-    if ref_dir.exists():  # noqa: PLR1702
+    if ref_dir.exists():
         for ref in sorted(ref_dir.glob("*.md")):
             if ref.name not in linked:
                 result.issues.append(Issue(
@@ -160,7 +161,7 @@ def check_routing_table(skill_md: Path, skill_dir: Path, result: AuditResult) ->
             ))
 
 
-def check_budget(result: AuditResult, skill_budget: int, ref_budget: int,  # noqa: PLR0913
+def check_budget(result: AuditResult, skill_budget: int, ref_budget: int,
                  config: dict) -> None:
     skill_budget = config.get("skill_md_budget", skill_budget)
     partial_access = set(config.get("partial_access_files", []))
@@ -188,7 +189,7 @@ def check_budget(result: AuditResult, skill_budget: int, ref_budget: int,  # noq
         ))
 
 
-def check_escalation_triggers(skill_md: Path, skill_dir: Path, result: AuditResult,  # noqa: PLR0913
+def check_escalation_triggers(skill_md: Path, skill_dir: Path, result: AuditResult,
                               config: dict) -> None:
     """A summary in SKILL.md that duplicates a reference must say when to open it.
 
@@ -208,7 +209,7 @@ def check_escalation_triggers(skill_md: Path, skill_dir: Path, result: AuditResu
         # Does this section's topic match a reference file name?
         matched = [s for s in ref_stems if any(
             token in s for token in re.findall(r"[a-z]{4,}", title))]
-        if not matched or len(section.split()) < 80:  # noqa: PLR2004
+        if not matched or len(section.split()) < 80:
             continue
         if any(marker in title for marker in core):
             continue
@@ -225,14 +226,14 @@ def check_escalation_triggers(skill_md: Path, skill_dir: Path, result: AuditResu
 def check_duplication(skill_dir: Path, result: AuditResult, config: dict) -> None:
     """Flag near-identical paragraphs across references (drift risk)."""
     paragraphs: dict[str, list[str]] = {}
-    for md in sorted((skill_dir / "references").glob("*.md")) if (skill_dir / "references").exists() else []:  # noqa: PLR1702
+    for md in sorted((skill_dir / "references").glob("*.md")) if (skill_dir / "references").exists() else []:
         for para in md.read_text(encoding="utf-8", errors="replace").split("\n\n"):
             normalized = " ".join(para.split()).lower()
-            if len(normalized.split()) < 25:  # noqa: PLR2004
+            if len(normalized.split()) < 25:
                 continue
             paragraphs.setdefault(normalized, []).append(md.name)
 
-    for normalized, files in paragraphs.items():  # noqa: B007
+    for normalized, files in paragraphs.items():
         unique = sorted(set(files))
         declared = [set(pair) for pair in config.get("deliberate_duplication", [])]
         if len(unique) > 1 and set(unique) in declared:
@@ -261,7 +262,7 @@ def audit(skill_dir: Path, skill_budget: int, ref_budget: int) -> AuditResult:
         return result
 
     result.skill_md = measure(skill_md, skill_dir)
-    for sub, bucket in (("references", result.references),  # noqa: PLR1702
+    for sub, bucket in (("references", result.references),
                         ("scripts", result.scripts),
                         ("assets", result.assets)):
         directory = skill_dir / sub
@@ -300,7 +301,7 @@ def report(result: AuditResult) -> None:
         return
 
     print(f"\nISSUES ({len(result.issues)})")
-    for severity in ("high", "medium", "low"):  # noqa: PLR1702
+    for severity in ("high", "medium", "low"):
         items = [i for i in result.issues if i.severity == severity]
         if not items:
             continue

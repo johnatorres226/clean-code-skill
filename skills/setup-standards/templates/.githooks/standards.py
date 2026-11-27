@@ -95,7 +95,7 @@ def size_problem(numstat: str, cfg: dict, limit_key: str = "commits") -> str | N
     return None
 
 
-def cmd_check(cfg: dict, fast: bool) -> int:  # noqa: FBT001
+def cmd_check(cfg: dict, fast: bool) -> int:
     wanted = (lambda n: n in FAST_GATES) if fast else (lambda n: n not in COMMIT_GATES)
     return run_gates({n: c for n, c in cfg.get("gates", {}).items() if wanted(n)})
 
@@ -347,12 +347,12 @@ def segments(command: str):
 def hooks_bypass(words: list[str]) -> bool:
     # Pointing core.hooksPath at the standards hooks (setup) is fine; any other use skips them.
     setup = words[:3] == ["git", "config", "core.hooksPath"] and len(words) == 4 \
-        and words[3].rstrip("/").endswith(".githooks")  # noqa: PLR2004
+        and words[3].rstrip("/").endswith(".githooks")
     return not setup and any("core.hooksPath" in w for w in words)
 
 
 def guard_problem(command: str, cfg: dict) -> str | None:
-    for words in segments(command):  # noqa: PLR1702
+    for words in segments(command):
         if hooks_bypass(words):
             return "overriding core.hooksPath skips the standards hooks; fix the failure instead"
         if "git" not in words:

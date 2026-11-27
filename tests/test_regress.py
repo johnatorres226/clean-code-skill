@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
-import regress as r  # noqa: E402
+import regress as r
 
 assert r.worse(1200, 1000, "max", 0.10, "rel"), "20% token growth must fail a 10% budget"
 assert not r.worse(1050, 1000, "max", 0.10, "rel")
