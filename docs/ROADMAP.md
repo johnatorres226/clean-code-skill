@@ -11,12 +11,12 @@ works under the same non-negotiables through one loop:
 
 ```
 understand → plan → build atomically → verify → review (tiered) → merge → release → retro
-   L2          L2         L0              L0          L1            L1       L1       L5
+   user's skills         L0              L0          L1            L1       L1    user's skills
 ```
 
-It does not compete with orchestration or review frameworks. It defines what acceptable work is,
-detects what the user already has installed, and hands each step to the best skill available,
-falling back to its own.
+It does not compete with orchestration or review frameworks. It defines what acceptable work is
+and leaves the other steps to the skills the user already has. Understanding is the spec and
+ticket the user agreed to; the verdict grades the PR against that ticket.
 
 ## Layers, in build order
 
@@ -25,14 +25,14 @@ falling back to its own.
 | L0 | Environment contract | `standards.toml`, hooks, CI `standards` check, `clean-code`, `verify`, `ship` |
 | L3 | Tracker | An agent that keeps the tracker in order, so the orchestrator spends no context on it |
 | L1 | Review, merge and release | Consequence tiers (ADR 0002), the reviewer agent and `verdict` rubric, release rules (ADR 0003) |
-| L2 | Intake | A rubric the agent uses to confirm it understands the request before building |
-| L4 | Mode | One entry point that injects the non-negotiables, lists available skills and agents, and checks the user's setup before changing it |
-| L5 | Retro | After each iteration, improve the environment: a check first, a standard second, steering text last |
 | L6 | Multi-harness | Packages for Claude Code, Codex, Gemini CLI and OpenCode; tracker adapters for GitLab and local Markdown |
 
-The tracker comes first because every later layer creates tickets. Review comes before intake
-because the verdict defines "done"; until intake exists, a PR with no ticket fails the CI link
-check.
+The tracker came first because every later layer creates tickets.
+
+**Cut (2026-11-26): L2 intake, L4 mode, L5 retro.** Each would load another skill into every
+session for work that the agreed ticket, the reviewer or the user's own skills (`grill-with-docs`,
+`to-spec`, `retro`) already do. New behavior goes into an existing role (tracker, reviewer) before
+it becomes a skill.
 
 ## L3: tracker
 
@@ -66,22 +66,6 @@ Grounded in `docs/research/code-review.md`, ADR 0002 and ADR 0003.
   blocked and adversarial escapes. Opus is the production reviewer; Haiku also passes, with no
   margin on clean PRs blocked. Reverts per tier need real PR history.
 
-## L2: intake (sketch)
-
-Before building, the agent checks its understanding against a rubric and the user confirms it.
-Each item is `pass | concern | fail`:
-
-- **Problem:** whose problem, in their words.
-- **Outcome:** how we will know it is done.
-- **Scope:** what is in and what is explicitly out.
-- **Size:** standalone ticket, spec, or multi-session effort, which picks the artifact.
-- **Consequence:** a tier preview.
-- **Unknowns:** assumptions said out loud.
-
-Where present, it hands off to Pocock's skills: `grilling` or `grill-with-docs` for shared
-understanding, `to-spec` and `to-tickets` for the artifacts, `wayfinder` for multi-session work,
-`triage` for incoming tickets.
-
 ## Frameworks we compose with
 
 | Framework | What we use | How |
@@ -90,8 +74,8 @@ understanding, `to-spec` and `to-tickets` for the artifacts, `wayfinder` for mul
 | pstack (cursor/plugins) | Orchestration, `interrogate`, adversarial review | Run alongside |
 | mattpocock/skills | `grill-with-docs`, `to-spec`, `to-tickets`, `wayfinder`, `triage`, `retro`, `codebase-design`, `improve-codebase-architecture` | Detect and hand off |
 
-Most of Pocock's engineering skills can be started only by the user (`disable-model-invocation`).
-The mode (L4) has to tell the user when to type them, or ship its own fallback.
+Most of Pocock's engineering skills can be started only by the user (`disable-model-invocation`);
+the agent names the one to type.
 
 ## Parked
 
