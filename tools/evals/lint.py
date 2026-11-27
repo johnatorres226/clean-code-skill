@@ -23,6 +23,7 @@ import re
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 
 # --------------------------------------------------------------------------------------
 # Configuration
@@ -477,42 +478,42 @@ def split_params(param_text: str) -> list[str]:
     return [p for p in params if p and p not in {"void"}]
 
 
+def brace_depth(text: str, depth: int, max_depth: int) -> tuple[int, int]:
+    """Depth after `text`, and the deepest it reached."""
+    for char in text:
+        if char == "{":
+            depth += 1
+            max_depth = max(max_depth, depth)
+        elif char == "}":
+            depth -= 1
+    return depth, max_depth
+
+
+def scan_c_body(lines: list[str], start: int) -> tuple[int, int, int, int]:
+    """(end index, max brace depth, complexity, return count) of the body that opens at `start`."""
+    depth = max_depth = returns = 0
+    complexity = 1
+    for scan in range(start, len(lines)):
+        scrubbed = strip_strings_and_comments(lines[scan])
+        depth, max_depth = brace_depth(scrubbed, depth, max_depth)
+        if scan > start:
+            complexity += len(C_COMPLEXITY_RE.findall(scrubbed))
+            returns += len(re.findall(r"\breturn\b", scrubbed))
+        if depth == 0:
+            return scan, max_depth, complexity, returns
+    return len(lines) - 1, max_depth, complexity, returns
+
+
 def find_c_functions(lines: list[str]) -> list[FunctionInfo]:
     """Locate function bodies by matching a header line then balancing braces."""
     functions: list[FunctionInfo] = []
     index = 0
-    total = len(lines)
-
-    while index < total:
-        line = lines[index]
-        match = C_FUNC_RE.match(line)
+    while index < len(lines):
+        match = C_FUNC_RE.match(lines[index])
         if not match or match.group("name").split("::")[-1] in C_KEYWORDS_NOT_FUNCTIONS:
             index += 1
             continue
-
-        # Balance braces to find the end of the body.
-        depth = 0
-        max_depth = 0
-        complexity = 1
-        returns = 0
-        end = index
-        for scan in range(index, total):
-            scrubbed = strip_strings_and_comments(lines[scan])
-            for char in scrubbed:
-                if char == "{":
-                    depth += 1
-                    max_depth = max(max_depth, depth)
-                elif char == "}":
-                    depth -= 1
-            if scan > index:
-                complexity += len(C_COMPLEXITY_RE.findall(scrubbed))
-                returns += len(re.findall(r"\breturn\b", scrubbed))
-            if depth == 0:
-                end = scan
-                break
-        else:
-            end = total - 1
-
+        end, max_depth, complexity, returns = scan_c_body(lines, index)
         functions.append(FunctionInfo(
             name=match.group("name"),
             line=index + 1,
@@ -524,7 +525,6 @@ def find_c_functions(lines: list[str]) -> list[FunctionInfo]:
             return_points=returns,
         ))
         index = end + 1
-
     return functions
 
 
@@ -532,138 +532,150 @@ BOOL_PARAM_RE = re.compile(r"\b(bool|boolean|BOOL)\b")
 OUT_PARAM_RE = re.compile(r"[\w:<>]+\s*[\*&]\s*\w+\s*$")
 
 
-def analyze_c_like(path: Path, lines: list[str], cfg: argparse.Namespace) -> list[Finding]:
+C_SUFFIXES = {".c", ".h"}
+CPP_SUFFIXES = {".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx"}
+CPP_HEADER_SUFFIXES = {".hpp", ".hh", ".hxx"}
+
+
+def c_function_findings(rel: str, func: FunctionInfo, cfg: argparse.Namespace) -> list[Finding]:
     findings: list[Finding] = []
+    if len(func.params) > cfg.max_params:
+        findings.append(Finding(
+            rel, func.line, "F1", "medium",
+            f"`{func.name}` takes {len(func.params)} parameters (limit {cfg.max_params}).",
+            "Group the ones that travel together into a struct/class.",
+        ))
+    flag = next((param for param in func.params if BOOL_PARAM_RE.search(param)), None)
+    if flag:
+        findings.append(Finding(
+            rel, func.line, "F3", "medium",
+            f"`{func.name}` takes a boolean flag parameter (`{flag.strip()}`).",
+            "A flag means the function does two things. Write the two functions.",
+        ))
+    checks = [
+        (func.body_lines > cfg.max_function_lines, "G30",
+         f"`{func.name}` body is {func.body_lines} lines (limit {cfg.max_function_lines}).",
+         "Extract the blocks you would otherwise comment; each becomes a named function."),
+        (func.max_nesting > cfg.max_nesting, "G34",
+         f"`{func.name}` nests {func.max_nesting} levels deep (limit {cfg.max_nesting}).",
+         "Invert preconditions into guard clauses, or extract the inner block."),
+        (func.complexity > cfg.max_complexity, "G30",
+         f"`{func.name}` has cyclomatic complexity ~{func.complexity} (limit {cfg.max_complexity}).",
+         "Decompose the conditional; consider polymorphism over a switch (G23)."),
+        (len(func.name) <= SHORT_NAME_LENGTH and not func.name.startswith("~"), "N1",
+         f"Function name `{func.name}` is too short to state intent.",
+         "Name it as a verb phrase describing the one thing it does."),
+    ]
+    return findings + [Finding(rel, func.line, code, "medium", message, hint)
+                       for hit, code, message, hint in checks if hit]
+
+
+def catch_findings(src: SimpleNamespace, index: int, scrubbed: str) -> list[Finding]:
+    """G4: silently swallowed exceptions."""
+    findings: list[Finding] = []
+    if re.search(r"catch\s*\([^)]*\)\s*\{\s*\}", scrubbed):
+        findings.append(Finding(
+            src.rel, index, "G4", "high",
+            "Exception silently swallowed (empty catch block).",
+            "Log with context or rethrow wrapped; never discard an error.",
+        ))
+    if src.suffix == ".java" and re.search(r"\bprintStackTrace\s*\(\s*\)", scrubbed):
+        findings.append(Finding(
+            src.rel, index, "G4", "medium",
+            "printStackTrace() instead of structured logging.",
+            "Log through the logger with context, or rethrow wrapped.",
+        ))
+    return findings
+
+
+def c_memory_findings(src: SimpleNamespace, index: int, scrubbed: str) -> list[Finding]:
+    """C: manual memory / unchecked calls."""
+    if src.suffix not in C_SUFFIXES:
+        return []
+    findings: list[Finding] = []
+    if re.search(r"\bstrcpy\s*\(|\bsprintf\s*\(|\bgets\s*\(|\bstrcat\s*\(", scrubbed):
+        findings.append(Finding(
+            src.rel, index, "G26", "high",
+            "Unbounded string function (strcpy/strcat/sprintf/gets).",
+            "Use the bounded variant (snprintf, strlcpy) and check the result.",
+        ))
+    nearby = " ".join(src.lines[index:index + 3])
+    allocation = re.match(r"^\s*(?:\w+\s*=\s*)?(?:malloc|calloc|realloc)\s*\(", scrubbed)
+    if allocation and "if" not in nearby and "NULL" not in nearby:
+        findings.append(Finding(
+            src.rel, index, "G4", "medium",
+            "Allocation result may not be checked.",
+            "Check for NULL before use; treat allocation failure as an error path.",
+        ))
+    return findings
+
+
+def cpp_findings(src: SimpleNamespace, index: int, scrubbed: str) -> list[Finding]:
+    """C++: raw owning allocation, header-scope using-directives."""
+    if src.suffix not in CPP_SUFFIXES:
+        return []
+    findings: list[Finding] = []
+    if re.search(r"(?<!\w)new\s+[A-Za-z_]", scrubbed) and "make_unique" not in scrubbed:
+        findings.append(Finding(
+            src.rel, index, "CPP-RAII", "medium",
+            "Raw `new` — ownership is not expressed in the type.",
+            "Use std::make_unique / std::make_shared, or a value type.",
+        ))
+    if re.search(r"(?<!\w)delete\s+\w", scrubbed):
+        findings.append(Finding(
+            src.rel, index, "CPP-RAII", "medium",
+            "Manual `delete` — leaks on any early return or exception.",
+            "Let RAII own the resource (unique_ptr, container, scope guard).",
+        ))
+    if re.search(r"^\s*using\s+namespace\s+", scrubbed) and src.suffix in CPP_HEADER_SUFFIXES:
+        findings.append(Finding(
+            src.rel, index, "G8", "high",
+            "`using namespace` at header scope leaks into every includer.",
+            "Qualify names, or confine the using-declaration to a .cpp/function scope.",
+        ))
+    return findings
+
+
+def java_findings(src: SimpleNamespace, index: int, scrubbed: str) -> list[Finding]:
+    """Java: returning null, raw types."""
+    if src.suffix != ".java":
+        return []
+    findings: list[Finding] = []
+    if re.search(r"(?:^|[;{)]\s*)return\s+null\s*;", scrubbed):
+        findings.append(Finding(
+            src.rel, index, "G26", "medium",
+            "Returning null pushes a check onto every caller.",
+            "Return Optional, an empty collection, a Special Case object, or throw.",
+        ))
+    if re.search(r"\bnew\s+(?:ArrayList|HashMap|HashSet)\s*\(\s*\)\s*;", scrubbed) \
+            and not re.search(r"<", scrubbed):
+        findings.append(Finding(
+            src.rel, index, "G26", "medium",
+            "Raw collection type without generics.",
+            "Parameterize it so the compiler can check element types.",
+        ))
+    return findings
+
+
+def c_line_findings(src: SimpleNamespace, index: int, scrubbed: str) -> list[Finding]:
+    findings = (catch_findings(src, index, scrubbed) + c_memory_findings(src, index, scrubbed)
+                + cpp_findings(src, index, scrubbed) + java_findings(src, index, scrubbed))
+    # G29: negative conditionals that read as double negatives.
+    if re.search(r"if\s*\(\s*![\w\.\(\)]*(?:not|Not|NOT|_no_|Disabled|Invalid)", scrubbed):
+        findings.append(Finding(
+            src.rel, index, "G29", "low",
+            "Negated negative conditional.",
+            "Express the predicate positively.",
+        ))
+    return findings
+
+
+def analyze_c_like(path: Path, lines: list[str], cfg: argparse.Namespace) -> list[Finding]:
     rel = str(path)
-    is_java = path.suffix == ".java"
-    is_c = path.suffix in {".c", ".h"}
-
-    for func in find_c_functions(lines):
-        if len(func.params) > cfg.max_params:
-            findings.append(Finding(
-                rel, func.line, "F1", "medium",
-                f"`{func.name}` takes {len(func.params)} parameters (limit {cfg.max_params}).",
-                "Group the ones that travel together into a struct/class.",
-            ))
-
-        for param in func.params:
-            if BOOL_PARAM_RE.search(param):
-                findings.append(Finding(
-                    rel, func.line, "F3", "medium",
-                    f"`{func.name}` takes a boolean flag parameter (`{param.strip()}`).",
-                    "A flag means the function does two things. Write the two functions.",
-                ))
-                break
-
-        if func.body_lines > cfg.max_function_lines:
-            findings.append(Finding(
-                rel, func.line, "G30", "medium",
-                f"`{func.name}` body is {func.body_lines} lines (limit {cfg.max_function_lines}).",
-                "Extract the blocks you would otherwise comment; each becomes a named function.",
-            ))
-
-        if func.max_nesting > cfg.max_nesting:
-            findings.append(Finding(
-                rel, func.line, "G34", "medium",
-                f"`{func.name}` nests {func.max_nesting} levels deep (limit {cfg.max_nesting}).",
-                "Invert preconditions into guard clauses, or extract the inner block.",
-            ))
-
-        if func.complexity > cfg.max_complexity:
-            findings.append(Finding(
-                rel, func.line, "G30", "medium",
-                f"`{func.name}` has cyclomatic complexity ~{func.complexity} "
-                f"(limit {cfg.max_complexity}).",
-                "Decompose the conditional; consider polymorphism over a switch (G23).",
-            ))
-
-        if len(func.name) <= 2 and not func.name.startswith("~"):
-            findings.append(Finding(
-                rel, func.line, "N1", "medium",
-                f"Function name `{func.name}` is too short to state intent.",
-                "Name it as a verb phrase describing the one thing it does.",
-            ))
-
+    findings = [finding for func in find_c_functions(lines) for finding in c_function_findings(rel, func, cfg)]
+    src = SimpleNamespace(rel=rel, suffix=path.suffix, lines=lines)
     for index, raw in enumerate(lines, start=1):
-        line = raw.rstrip("\n")
-        scrubbed = strip_strings_and_comments(line)
-
-        # G4: silently swallowed exceptions.
-        if re.search(r"catch\s*\([^)]*\)\s*\{\s*\}", scrubbed):
-            findings.append(Finding(
-                rel, index, "G4", "high",
-                "Exception silently swallowed (empty catch block).",
-                "Log with context or rethrow wrapped; never discard an error.",
-            ))
-        if is_java and re.search(r"\bprintStackTrace\s*\(\s*\)", scrubbed):
-            findings.append(Finding(
-                rel, index, "G4", "medium",
-                "printStackTrace() instead of structured logging.",
-                "Log through the logger with context, or rethrow wrapped.",
-            ))
-
-        # C: manual memory / unchecked calls.
-        if is_c:
-            if re.search(r"\bstrcpy\s*\(|\bsprintf\s*\(|\bgets\s*\(|\bstrcat\s*\(", scrubbed):
-                findings.append(Finding(
-                    rel, index, "G26", "high",
-                    "Unbounded string function (strcpy/strcat/sprintf/gets).",
-                    "Use the bounded variant (snprintf, strlcpy) and check the result.",
-                ))
-            if re.match(r"^\s*(?:\w+\s*=\s*)?(?:malloc|calloc|realloc)\s*\(", scrubbed):
-                nearby = " ".join(lines[index:index + 3])
-                if "if" not in nearby and "NULL" not in nearby:
-                    findings.append(Finding(
-                        rel, index, "G4", "medium",
-                        "Allocation result may not be checked.",
-                        "Check for NULL before use; treat allocation failure as an error path.",
-                    ))
-
-        # C++: raw owning allocation.
-        if path.suffix in {".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx"}:
-            if re.search(r"(?<!\w)new\s+[A-Za-z_]", scrubbed) and "make_unique" not in scrubbed:
-                findings.append(Finding(
-                    rel, index, "CPP-RAII", "medium",
-                    "Raw `new` — ownership is not expressed in the type.",
-                    "Use std::make_unique / std::make_shared, or a value type.",
-                ))
-            if re.search(r"(?<!\w)delete\s+\w", scrubbed):
-                findings.append(Finding(
-                    rel, index, "CPP-RAII", "medium",
-                    "Manual `delete` — leaks on any early return or exception.",
-                    "Let RAII own the resource (unique_ptr, container, scope guard).",
-                ))
-            if re.search(r"^\s*using\s+namespace\s+", scrubbed) and path.suffix in {".hpp", ".hh", ".hxx"}:
-                findings.append(Finding(
-                    rel, index, "G8", "high",
-                    "`using namespace` at header scope leaks into every includer.",
-                    "Qualify names, or confine the using-declaration to a .cpp/function scope.",
-                ))
-
-        # Java: returning null, raw types.
-        if is_java:
-            if re.search(r"(?:^|[;{)]\s*)return\s+null\s*;", scrubbed):
-                findings.append(Finding(
-                    rel, index, "G26", "medium",
-                    "Returning null pushes a check onto every caller.",
-                    "Return Optional, an empty collection, a Special Case object, or throw.",
-                ))
-            if re.search(r"\bnew\s+(?:ArrayList|HashMap|HashSet)\s*\(\s*\)\s*;", scrubbed) \
-                    and not re.search(r"<", scrubbed):
-                findings.append(Finding(
-                    rel, index, "G26", "medium",
-                    "Raw collection type without generics.",
-                    "Parameterize it so the compiler can check element types.",
-                ))
-
-        # G29: negative conditionals that read as double negatives.
-        if re.search(r"if\s*\(\s*![\w\.\(\)]*(?:not|Not|NOT|_no_|Disabled|Invalid)", scrubbed):
-            findings.append(Finding(
-                rel, index, "G29", "low",
-                "Negated negative conditional.",
-                "Express the predicate positively.",
-            ))
-
+        findings += c_line_findings(src, index, strip_strings_and_comments(raw.rstrip("\n")))
     return findings
 
 
@@ -672,20 +684,20 @@ def analyze_c_like(path: Path, lines: list[str], cfg: argparse.Namespace) -> lis
 # --------------------------------------------------------------------------------------
 
 
+def source_files_under(root: Path) -> list[Path]:
+    return [candidate for candidate in sorted(root.rglob("*"))
+            if candidate.suffix in ALL_SUFFIXES and candidate.is_file()
+            and not any(part in SKIP_DIRS for part in candidate.parts)]
+
+
 def iter_source_files(paths: list[str]) -> list[Path]:
     files: list[Path] = []
     for entry in paths:
         root = Path(entry)
         if root.is_file():
-            if root.suffix in ALL_SUFFIXES:
-                files.append(root)
-            continue
-        for candidate in sorted(root.rglob("*")):
-            if candidate.suffix not in ALL_SUFFIXES or not candidate.is_file():
-                continue
-            if any(part in SKIP_DIRS for part in candidate.parts):
-                continue
-            files.append(candidate)
+            files += [root] if root.suffix in ALL_SUFFIXES else []
+        else:
+            files += source_files_under(root)
     return files
 
 
@@ -728,61 +740,61 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp1252
-    cfg = build_parser().parse_args(argv)
-
+def selected(findings: list[Finding], cfg: argparse.Namespace) -> list[Finding]:
+    """Findings that pass --only, --exclude and --min-severity, sorted by file, line, severity."""
     only = {c.strip().upper() for c in cfg.only.split(",") if c.strip()}
     exclude = {c.strip().upper() for c in cfg.exclude.split(",") if c.strip()}
     severity_cutoff = SEVERITY_ORDER[cfg.min_severity]
-
-    files = iter_source_files(cfg.paths)
-    if not files:
-        print("No C/C++/Java/Python source files found.", file=sys.stderr)
-        return 0
-
-    findings: list[Finding] = []
-    for path in files:
-        findings.extend(analyze_file(path, cfg))
-
-    findings = [
+    kept = [
         f for f in findings
         if (not only or f.code.upper() in only)
         and f.code.upper() not in exclude
         and SEVERITY_ORDER[f.severity] <= severity_cutoff
     ]
-    findings.sort(key=lambda f: (f.path, f.line, SEVERITY_ORDER[f.severity]))
+    return sorted(kept, key=lambda f: (f.path, f.line, SEVERITY_ORDER[f.severity]))
 
+
+def print_summary(findings: list[Finding]) -> None:
+    if not findings:
+        print("No findings. (This checks mechanical smells only — still review by hand.)")
+        return
+    counts: dict[str, int] = {}
+    for finding in findings:
+        counts[finding.code] = counts.get(finding.code, 0) + 1
+    print("Summary by catalog code (see references/smells-catalog.md):")
+    for code, count in sorted(counts.items(), key=lambda kv: -kv[1]):
+        print(f"  {code:<10} {count}")
+
+
+def print_report(file_count: int, findings: list[Finding]) -> None:
+    print(f"Analyzed {file_count} file(s); {len(findings)} finding(s).\n")
+    by_file: dict[str, list[Finding]] = {}
+    for finding in findings:
+        by_file.setdefault(finding.path, []).append(finding)
+    for path, items in by_file.items():
+        print(path)
+        for item in items:
+            print(item.render())
+        print()
+    print_summary(findings)
+
+
+def main(argv: list[str] | None = None) -> int:
+    sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp1252
+    cfg = build_parser().parse_args(argv)
+    files = iter_source_files(cfg.paths)
+    if not files:
+        print("No C/C++/Java/Python source files found.", file=sys.stderr)
+        return 0
+    findings = selected([finding for path in files for finding in analyze_file(path, cfg)], cfg)
     if cfg.json:
         print(json.dumps({
             "files_analyzed": len(files),
             "finding_count": len(findings),
             "findings": [asdict(f) for f in findings],
         }, indent=2))
-        return 1 if (cfg.fail_on_findings and findings) else 0
-
-    print(f"Analyzed {len(files)} file(s); {len(findings)} finding(s).\n")
-
-    by_file: dict[str, list[Finding]] = {}
-    for finding in findings:
-        by_file.setdefault(finding.path, []).append(finding)
-
-    for path, items in by_file.items():
-        print(path)
-        for item in items:
-            print(item.render())
-        print()
-
-    if findings:
-        counts: dict[str, int] = {}
-        for finding in findings:
-            counts[finding.code] = counts.get(finding.code, 0) + 1
-        print("Summary by catalog code (see references/smells-catalog.md):")
-        for code, count in sorted(counts.items(), key=lambda kv: -kv[1]):
-            print(f"  {code:<10} {count}")
     else:
-        print("No findings. (This checks mechanical smells only — still review by hand.)")
-
+        print_report(len(files), findings)
     return 1 if (cfg.fail_on_findings and findings) else 0
 
 
