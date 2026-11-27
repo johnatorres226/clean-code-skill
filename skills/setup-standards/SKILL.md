@@ -29,7 +29,8 @@ stack's commands. Most pass on an empty tree (`ruff check .`), and a gate left b
 rarely filled later.
 
 Fill the `secrets` gate only with a scanner the repo already runs; never propose one. The
-platform's push protection (step 4) is the secret scanner: it needs no tool on any machine.
+platform's push protection (step 4) is the secret scanner where the plan includes it (free on public
+GitHub repos); without it the gate stays empty.
 
 ## 2. Copy the templates
 

@@ -349,8 +349,8 @@ Order = how often it comes up × how bad it is when missed. Items 1–4 can bloc
    human-review trigger (b). This is rare but the most severe.
 3. **Security and supply chain.** Check injection, path traversal, and new or bumped
    dependencies. Secrets and known-vulnerable dependencies are the scanners' job, not the
-   reviewer's: review missed 81.1% of leaked credentials (§6). The reviewer confirms the scanners
-   ran and reads what they cannot judge.
+   reviewer's: review missed 81.1% of leaked credentials (§6). The reviewer confirms any scanner that
+   ran passed and reads what they cannot judge.
 4. **Tests and CI.** Is CI green? Do the tests fail if the code is wrong? Did the agent weaken or
    delete tests? Failing CI is a top rejection reason (§6).
 5. **Scope.** Look for changes nobody asked for (revert them), size, and files touched. Usefulness
