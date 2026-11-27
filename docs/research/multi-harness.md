@@ -118,7 +118,7 @@ N = native, W = workaround, X = not supported. Claude Code is the baseline (N fo
 ## A7. Minimal packaging, one repo
 
 1. **Canonical sources, generated outputs.** Keep `skills/`, one neutral agent spec, and
-   `CLAUDE.standards.md`. A generator (or `setup-standards`) writes `AGENTS.md`, `GEMINI.md`
+   `CLAUDE.standards.md`. A generator (or `setup-standards`) would write `AGENTS.md`, `GEMINI.md`
    (`@AGENTS.md`), `.agents/skills/`, `.codex/agents/*.toml`, `.gemini/agents/*.md`,
    `.opencode/agents/*.md`; a planned drift check in `standards.py check` fails when they differ.
 2. **Guard adapters.** `standards.py guard` accepts Claude, Codex and Gemini stdin JSON and exits 2
