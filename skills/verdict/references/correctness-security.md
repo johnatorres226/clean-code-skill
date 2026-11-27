@@ -42,8 +42,9 @@ an entry point wired up early.
 
 Check injection, path traversal, unsafe deserialization, authorization on every new entry point,
 and new or bumped dependencies (is it needed, maintained, the expected package?). Secrets and
-known-vulnerable versions belong to the scanners: confirm they ran and passed, and do not hunt for
-them by reading.
+known-vulnerable versions belong to the scanners and the platform's push protection: confirm any
+scanner that ran passed, and do not hunt for them by reading. A repo with no scanner is not a
+finding.
 
 ## Intended breakage
 

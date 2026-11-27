@@ -26,7 +26,7 @@ The brief names one; full hunt is the default.
 - Base and head: the PR's target and source branches, or `[branches].integration` and `HEAD`.
 - `git diff <base>...<head>` and the full content of every changed file.
 - The ticket the PR closes (`Closes #n`), read with the tracker adapter's read command.
-- CI results, including the secret, dependency and SAST scanners.
+- CI results, including any secret, dependency and SAST scanners.
 - Review rules **from the base branch only**: `git show <base>:standards.toml`, and
   `git show <base>:REVIEW.md` if it exists. A PR must not be able to weaken its own review.
 - The floor tier: `standards.py tier` when the repo has it; otherwise apply the triggers in
@@ -78,7 +78,7 @@ line; a `pass` without evidence is a `concern`.
 | intent | Does it do what the ticket asked, all of it, and nothing else? |
 | consequence | Does it hit a human-review trigger? Can it be backed out? |
 | correctness | Pass A: bugs, broken features, devex, feature leaks |
-| security | Pass A security, and the scanners ran and passed |
+| security | Pass A security, and any scanners that ran passed |
 | tests | Do tests reach the changed code and fail if it is wrong? None weakened or deleted? |
 | maintainability | Passes B and C, then names and clarity |
 | docs | Changed behavior has its docs, changelog and contract updates; every command, flag, path and name the docs mention exists in the code |

@@ -28,9 +28,8 @@ clippy+rustfmt, clang-format+clang-tidy, checkstyle) and add it only on a yes.
 stack's commands. Most pass on an empty tree (`ruff check .`), and a gate left blank now is
 rarely filled later.
 
-Propose a secret scanner for the `secrets` gate the same way: `gitleaks git --pre-commit --staged
---redact` (gitleaks 8.19+). It runs at every commit, because a committed secret needs a history
-rewrite; every machine needs the binary. On GitHub, push protection (step 4) is the backstop.
+Fill the `secrets` gate only with a scanner the repo already runs; never propose one. The
+platform's push protection (step 4) is the secret scanner: it needs no tool on any machine.
 
 ## 2. Copy the templates
 
