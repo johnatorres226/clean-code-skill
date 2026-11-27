@@ -41,7 +41,7 @@ Three version traps:
 
 Consequence: `AGENTS.md` is the common target. Codex and OpenCode read it by default; Gemini needs
 `context.fileName` or a `GEMINI.md` containing `@AGENTS.md`. That Claude Code reads only
-`CLAUDE.md` (not `AGENTS.md`) is from memory, not checked here; so keep `CLAUDE.md` as a one-line
+`CLAUDE.md` (not `AGENTS.md`) is from memory (UNVERIFIED); so keep `CLAUDE.md` as a one-line
 `@AGENTS.md` import or keep both files generated from `CLAUDE.standards.md`.
 
 ## A2. Skills (`SKILL.md`)
@@ -55,7 +55,8 @@ Consequence: `AGENTS.md` is the common target. Codex and OpenCode read it by def
 All three read `.agents/skills/`. Claude Code reads `.claude/skills` and plugin `skills/` (not
 re-verified here). A repo-root `.agents/skills -> skills` symlink or copy covers Codex, Gemini and
 OpenCode in one place; Codex documents following symlinked skill folders. Windows symlink support
-for contributors is a risk, so prefer a generated copy plus a drift check in `standards.py check`.
+for contributors is a risk, so prefer a generated copy plus a drift check (planned; `standards.py
+check` has none today).
 
 ## A3. Subagents / custom agents
 
@@ -68,9 +69,10 @@ for contributors is a risk, so prefer a generated copy plus a drift check in `st
 
 Gemini is closest to ours (same `name/description/tools/model` keys) but tool names differ and a
 Claude alias such as `model: sonnet` is not valid elsewhere. OpenCode needs `mode: subagent` or the
-agent shows as primary. Codex needs TOML and has no tool restriction, so the `reviewer` agent's
-read-only guarantee must come from the sandbox or a hook, not from the agent file. Plan: one neutral
-source (name, description, body, read-only flag) and a generator emitting the four files.
+agent shows as primary. Codex needs TOML and has no tool restriction. Our `reviewer` is not
+read-only at tool level either: `agents/reviewer.md` grants `Bash`, and its no-edit rule is a prompt
+rule. Where read-only must hold, enforce it with the sandbox or a hook. Plan: one neutral source per
+agent (`reviewer`, `tracker`: name, description, body, tools) and a generator emitting the four files.
 
 ## A4. Pre-tool hooks that can block
 
@@ -110,15 +112,15 @@ N = native, W = workaround, X = not supported. Claude Code is the baseline (N fo
 | Agents `agents/*.md` | W (TOML, no tool list) | W (near-identical md; tool/model names differ) | W (md; `mode`, `permissions`, `provider/model`) |
 | PreToolUse guard | N (`hooks.json`, same protocol shape; trust prompt) | N (`BeforeTool`, exit 2) | W (TS plugin or `permissions` globs) |
 | Git hooks, CI workflow | N | N | N |
-| One-command install of everything | W (plugin has no agents; hooks unreliable) | N (extension carries all) | W (npm plugin has no skills/rules) |
-| Tracker adapter doc | N (prose in skill) | N | N |
+| One-command install of everything | W (plugin has no agents; hooks unreliable) | W (extension carries all; `agents/` is preview) | W (npm plugin has no skills/rules) |
+| Tracker agent (`agents/tracker.md`) and adapter doc (`docs/agents/issue-tracker.md`) | W (agent as TOML; doc is plain Markdown) | W (agent md) | W (agent md) |
 
 ## A7. Minimal packaging, one repo
 
 1. **Canonical sources, generated outputs.** Keep `skills/`, one neutral agent spec, and
    `CLAUDE.standards.md`. A generator (or `setup-standards`) writes `AGENTS.md`, `GEMINI.md`
    (`@AGENTS.md`), `.agents/skills/`, `.codex/agents/*.toml`, `.gemini/agents/*.md`,
-   `.opencode/agents/*.md`; `standards.py check` fails on drift.
+   `.opencode/agents/*.md`; a planned drift check in `standards.py check` fails when they differ.
 2. **Guard adapters.** `standards.py guard` accepts Claude, Codex and Gemini stdin JSON and exits 2
    on block. Emit `.codex/hooks.json` and `.gemini/settings.json` hook stanzas; for OpenCode emit
    `permissions` deny rules plus an optional spawning plugin.
@@ -126,7 +128,8 @@ N = native, W = workaround, X = not supported. Claude Code is the baseline (N fo
    `.agents/plugins/marketplace.json` (Codex), `gemini-extension.json` (Gemini). OpenCode: skip npm;
    rely on `.agents/skills` + `AGENTS.md` + generated `.opencode/` files committed by `setup-standards`.
 4. **Install story.** Gemini extension and Codex marketplace install skills and context;
-   `setup-standards` then writes the project-level hooks and agents that plugins cannot carry.
+   `setup-standards` would then write the project-level hooks and agents that plugins cannot carry
+   (planned: its templates have no agents today).
 
 Open item: I did not verify that Gemini loads a Claude-format marketplace or that Codex plugin
 skills inherit `allowed-tools` from `SKILL.md` frontmatter.
@@ -177,7 +180,7 @@ MR being `merged` with a matching `merge_commit_sha`. With merge-request pipelin
 | Control | Tier | Setting / API |
 |---|---|---|
 | Protected branches | Free | `POST /projects/:id/protected_branches` (`push_access_level`, `merge_access_level`: 0 none, 30 Developer, 40 Maintainer; default 40) ([API](https://docs.gitlab.com/api/protected_branches/), [guide](https://docs.gitlab.com/user/project/repository/branches/protected/)) |
-| Per-user / per-group allowed to push, code-owner approval required, group-level protection | Premium+ | `allowed_to_push` with `user_id`, `group_id`, `access_level` is Premium+; `member_role_id` Ultimate; `deploy_key_id` Free since 18.10 |
+| Per-user / per-group allowed to push, code-owner approval required, group-level protection | Premium+ | `allowed_to_push` with `user_id`, `group_id`, `access_level` is Premium+; `member_role_id` Ultimate; `deploy_key_id` Free since 18.10 ([API](https://docs.gitlab.com/api/protected_branches/); tier values UNVERIFIED) |
 | Pipelines must succeed | Free | Settings > Merge requests > Merge checks; skipped pipelines block unless allowed ([auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)) |
 | Approvals | Free: any Developer+ can approve, optional, "don't prevent merging". Required approval rules, prevent author approval enforced: Premium+ | `POST /projects/:id/approval_rules`, `POST /projects/:id/approvals` (Premium+) ([API](https://docs.gitlab.com/api/merge_request_approvals/), [guide](https://docs.gitlab.com/user/project/merge_requests/approvals/)) |
 | Push rules (commit message / branch name regex, prohibited filenames, secrets, unsigned commits) | Premium+ | Project push rules API ([guide](https://docs.gitlab.com/user/project/repository/push_rules/), [API](https://docs.gitlab.com/api/project_push_rules/)): endpoint details not read |
