@@ -189,6 +189,7 @@ def todo_findings(rel: str, lines: list[str], markers: tuple[str, ...]) -> list[
 
 
 def file_size_findings(rel: str, line_count: int, cfg: argparse.Namespace) -> list[Finding]:
+    """G8: a file over the line limit usually holds several concepts."""
     if line_count <= cfg.max_file_lines:
         return []
     return [
@@ -525,6 +526,7 @@ def limit_findings(rel: str, node: ast.FunctionDef | ast.AsyncFunctionDef, cfg: 
 
 
 def short_name_findings(rel: str, node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[Finding]:
+    """N1: a function name too short to state intent."""
     if len(node.name) > SHORT_NAME_LENGTH or node.name.startswith("__"):
         return []
     return [
@@ -557,6 +559,7 @@ def docstring_findings(rel: str, node: ast.FunctionDef | ast.AsyncFunctionDef) -
 
 
 def local_name_findings(rel: str, node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[Finding]:
+    """N1: local variables named for nothing they hold."""
     return [
         Finding(
             rel,
