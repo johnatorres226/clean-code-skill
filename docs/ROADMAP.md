@@ -11,8 +11,10 @@ works under the same non-negotiables through one loop:
 
 ```
 understand → plan → build atomically → verify → review (tiered) → merge → release → retro
-   user's skills         L0              L0          L1            L1       L1    user's skills
+   user        user          L0              L0          L1            L1       L1      user
 ```
+
+`user`: the skills the user already has (`grill-with-docs`, `to-spec`, `to-tickets`, `retro`).
 
 It does not compete with orchestration or review frameworks. It defines what acceptable work is
 and leaves the other steps to the skills the user already has. Understanding is the spec and
