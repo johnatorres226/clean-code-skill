@@ -38,8 +38,10 @@ check.
 
 - Does mechanics only: creates a ticket from a brief, sets labels and state, links parents and
   blockers, finds the next unblocked ticket, and keeps the map's index of decisions current.
-- Never comments (comments belong to the implementer or reviewer working the ticket) and never
-  closes a ticket (merged PRs close their own tickets; a stale ticket is flagged, not closed).
+- Never comments (comments belong to the implementer or reviewer working the ticket). Cleans up:
+  deletes branches whose PR merged and closes released tickets (GitHub closes a ticket only when
+  its PR reaches the default branch, and ticket PRs merge into `dev`); idle work is flagged, not
+  touched.
 - Follows the platform adapter doc (`docs/agents/issue-tracker.md`), never `gh` from memory.
 - Runs on the cheapest model and returns at most three lines.
 - The map holds one entry per layer. Tickets are created only for the layer being worked, a few at
