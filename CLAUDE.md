@@ -26,5 +26,6 @@ This repo adopts its own plugin. Rules: `standards.toml`; hooks live in
 - Done = `python skills/setup-standards/templates/.githooks/standards.py check` green.
 - Code: one job per function (≤ 20 lines, ≤ 3 params, no boolean-flag params, nesting ≤ 2),
   named constants instead of magic numbers, comments only for *why*. Full procedure: skill `clean-code`.
+- `uv sync` once; the gates run through `uv run` (ruff's limits in `pyproject.toml`).
 - Maintainer tools: `tools/skill_audit.py`, `tools/skill_eval.py`, `tools/review_eval.py` (local
   only, paid), `tests/test_standards.py`.

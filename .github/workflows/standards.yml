@@ -22,6 +22,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked          # the gates run through `uv run` (pyproject.toml, uv.lock)
 
       - name: Rules from the base branch, code from the PR (a PR cannot loosen its own checks)
         env:                           # the PR's standards.py stays in the tree, so its own tests test it
@@ -49,11 +51,6 @@ jobs:
         run: printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md" && python3 "$RUNNER_TEMP/standards.py" range origin/${{ github.base_ref }} --branch "$HEAD_REF" --body-file "$RUNNER_TEMP/pr-body.md" ${{ steps.exempt.outputs.flag }}
       - name: Gates
         run: python3 "$RUNNER_TEMP/standards.py" check
-      - name: Skill regression gate (token cost, SkillEvaluator quality, self-checks)
-        run: |
-          pip install --quiet skillevaluator
-          python tests/test_regress.py
-          python tools/regress.py static
       - name: Release - proof of review and release gates (docs/adr/0003)
         if: github.event_name == 'pull_request' && github.head_ref == 'dev'
         env:
