@@ -196,9 +196,12 @@ def test_added_by_file():
 
 def test_hooks_end_to_end():
     """Real git repo: protected-branch commit and bad message are blocked; good flow passes."""
+    # run from a git hook in a worktree, GIT_DIR points at the real repo: strip it, or the throwaway
+    # repo's init, config and commits land there
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")} | {"GIT_CONFIG_NOSYSTEM": "1"}
     with tempfile.TemporaryDirectory() as tmp:
         def run(*args, stdin=None):
-            return subprocess.run(args, cwd=tmp, input=stdin, capture_output=True, text=True)
+            return subprocess.run(args, cwd=tmp, input=stdin, capture_output=True, text=True, env=env)
 
         def std(*args, stdin=None):
             return run(sys.executable, str(TEMPLATES / ".githooks" / "standards.py"), *args, stdin=stdin)
