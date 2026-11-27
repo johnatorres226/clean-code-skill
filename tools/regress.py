@@ -63,19 +63,28 @@ def static_metrics() -> dict:
     return metrics
 
 
-def worse(current: float, base: float, direction: str, tolerance: float, kind: str) -> bool:
+def worse(current: float, base: float, rule: tuple) -> bool:
+    """rule = (direction, tolerance, kind): "max" or "min", and "rel" or "abs" slack."""
+    direction, tolerance, kind = rule
     slack = tolerance * abs(base) if kind == "rel" else tolerance
     return current > base + slack if direction == "max" else current < base - slack
 
 
-def compare(label: str, current: dict, base: dict, rules: list) -> list[str]:
-    failures = []
-    for key, direction, tolerance, kind in rules:
+def compare(current: dict, base: dict, rules: list) -> list[tuple]:
+    """(key, baseline, current, regressed) per rule; regressed is None when a value is missing."""
+    rows = []
+    for key, *rule in rules:
         cur, ref = current.get(key), base.get(key)
-        if cur is None or ref is None:
+        rows.append((key, ref, cur, None if cur is None or ref is None else worse(cur, ref, rule)))
+    return rows
+
+
+def report(label: str, rows: list[tuple]) -> list[str]:
+    failures = []
+    for key, ref, cur, bad in rows:
+        if bad is None:
             print(f"  {label:<18} {key:<34} skipped (no {'current' if cur is None else 'baseline'} value)")
             continue
-        bad = worse(cur, ref, direction, tolerance, kind)
         print(f"  {label:<18} {key:<34} {ref:>10.3f} -> {cur:>10.3f}  {'REGRESSED' if bad else 'ok'}")
         if bad:
             failures.append(f"{label}: {key} {ref:.3f} -> {cur:.3f}")
@@ -95,30 +104,45 @@ def self_check() -> list[str]:
     return [] if done.returncode == 0 else ["enforcement self-check failed:\n" + done.stdout + done.stderr]
 
 
+def bench_summary(variant: str) -> dict:
+    summary = ROOT / "results" / "bench" / variant / "summary.json"
+    return flatten_bench(json.loads(summary.read_text(encoding="utf-8")))
+
+
+def write_baseline(base: dict, variant: str | None) -> int:
+    base["static"] = static_metrics()
+    if variant:
+        base["bench"] = {"variant": variant, **bench_summary(variant)}
+    BASELINE.write_text(json.dumps(base, indent=2) + "\n", encoding="utf-8")
+    print(f"wrote {BASELINE.relative_to(ROOT)}")
+    return 0
+
+
+def static_failures(base: dict) -> list[str]:
+    failures = self_check()
+    for skill, metrics in static_metrics().items():
+        failures += report(skill, compare(metrics, base.get("static", {}).get(skill, {}), STATIC_RULES))
+    return failures
+
+
+def bench_failures(base: dict, variant: str) -> list[str]:
+    current, baseline = bench_summary(variant), base.get("bench", {})
+    failures = []
+    if current["models"] != baseline.get("models"):
+        failures.append(f"model mismatch: baseline {baseline.get('models')} vs {current['models']} "
+                        "(a cross-model comparison is not a regression test)")
+    return failures + report(f"bench {variant}", compare(current, baseline, BENCH_RULES))
+
+
 def main(argv: list[str]) -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     base = json.loads(BASELINE.read_text(encoding="utf-8")) if BASELINE.exists() else {}
     command = argv[0] if argv else "static"
     if command == "baseline":
-        base["static"] = static_metrics()
-        if len(argv) > 1:
-            summary = ROOT / "results" / "bench" / argv[1] / "summary.json"
-            base["bench"] = {"variant": argv[1], **flatten_bench(json.loads(summary.read_text(encoding="utf-8")))}
-        BASELINE.write_text(json.dumps(base, indent=2) + "\n", encoding="utf-8")
-        print(f"wrote {BASELINE.relative_to(ROOT)}")
-        return 0
-    failures = []
-    if command == "static":
-        failures += self_check()
-        for skill, metrics in static_metrics().items():
-            failures += compare(skill, metrics, base.get("static", {}).get(skill, {}), STATIC_RULES)
-    elif command == "bench":
-        summary = json.loads((ROOT / "results" / "bench" / argv[1] / "summary.json").read_text(encoding="utf-8"))
-        current = flatten_bench(summary)
-        if current["models"] != base.get("bench", {}).get("models"):
-            failures.append(f"model mismatch: baseline {base.get('bench', {}).get('models')} vs {current['models']} "
-                            "(a cross-model comparison is not a regression test)")
-        failures += compare(f"bench {argv[1]}", current, base.get("bench", {}), BENCH_RULES)
+        return write_baseline(base, argv[1] if len(argv) > 1 else None)
+    failures = static_failures(base) if command == "static" else []
+    if command == "bench":
+        failures = bench_failures(base, argv[1])
     print("\n" + ("REGRESSIONS:\n  " + "\n  ".join(failures) if failures else "no regressions"))
     return 1 if failures else 0
 
