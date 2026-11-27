@@ -228,6 +228,15 @@ def test_hooks_end_to_end():
         guard = std("guard", stdin=json.dumps({"tool_input": {"command": "git push origin dev"}}))
         assert guard.returncode == 2
 
+        # release dev -> main: an old oversized commit on dev does not block it, and the tag pushes
+        run("git", "checkout", "-q", "-b", "dev")
+        (Path(tmp) / "big.txt").write_text("x\n" * 400, encoding="utf-8")
+        run("git", "add", "-A")
+        run("git", "commit", "-q", "-m", "feat: bootstrap")
+        assert std("range", "main", "--branch", "feat/y").returncode == 1, "a ticket PR still checks commit size"
+        assert std("range", "main", "--branch", "dev").returncode == 0
+        assert std("pre-push", stdin="refs/tags/r1 abc refs/tags/r1 0000\n").returncode == 0
+
 
 if __name__ == "__main__":
     os.environ.setdefault("GIT_CONFIG_NOSYSTEM", "1")
