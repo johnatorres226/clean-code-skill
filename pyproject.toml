@@ -29,5 +29,4 @@ max-nested-blocks = 2
 "tools/bench.py" = ["E731", "FBT001", "PLR0913", "PLR0915", "PLR1702", "PLR2004"]
 "tools/evals/judge.py" = ["E501", "E731", "PLR0913"]  # E501: the judge prompt is one line
 "tools/evals/lint.py" = ["B905", "C901", "FBT001", "PLR0915", "PLR1702", "PLR2004"]
-"tools/regress.py" = ["PLR0913", "PLR0915"]
 "tools/skill_eval.py" = ["PLR0913", "PLR0915"]
