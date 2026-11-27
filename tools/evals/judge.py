@@ -25,7 +25,8 @@ Task:
 === Solution B ===
 {b}
 
-Reply with only a JSON object: {{"better": "A" or "B" or "tie", "score_A": 1-10, "score_B": 1-10, "reason": "<one sentence>"}}"""
+Reply with only a JSON object: """ \
+    '{{"better": "A" or "B" or "tie", "score_A": 1-10, "score_B": 1-10, "reason": "<one sentence>"}}'
 
 Ask = Callable[[str], "tuple[str, float]"]
 
@@ -38,10 +39,9 @@ def parse_verdict(text: str) -> dict:
         return {}
 
 
-def pairwise(ask: Ask, task: str, first_code: str, second_code: str,
-             labels: tuple[str, str] = ("none", "standards")) -> dict:
-    """Judge `first_code` (labels[0]) against `second_code` (labels[1]) in both orders."""
-    a_label, b_label = labels
+def pairwise(ask: Ask, task: str, code: dict[str, str]) -> dict:
+    """Judge two labeled solutions, {label: code} in that order, against each other in both orders."""
+    (a_label, first_code), (b_label, second_code) = code.items()
     reply1, cost1 = ask(JUDGE_PROMPT.format(task=task, a=first_code, b=second_code))
     reply2, cost2 = ask(JUDGE_PROMPT.format(task=task, a=second_code, b=first_code))
     v1, v2 = parse_verdict(reply1), parse_verdict(reply2)
@@ -62,11 +62,14 @@ def pairwise(ask: Ask, task: str, first_code: str, second_code: str,
 if __name__ == "__main__":
     # Self-check with a scripted judge that always prefers whichever solution is shown first:
     # pure position bias must collapse to a tie.
-    biased = lambda prompt: ('{"better": "A", "score_A": 8, "score_B": 5, "reason": "x"}', 0.0)
-    assert pairwise(biased, "t", "x", "y")["winner"] == "tie"
-    consistent = lambda prompt: (
-        '{"better": "%s", "score_A": 5, "score_B": 5}' % ("A" if prompt.index("good()") <
-                                                          prompt.index("bad()") else "B"), 0.0)
-    assert pairwise(consistent, "t", "bad()", "good()")["winner"] == "standards"
-    assert pairwise(lambda prompt: ("garbled", 0.0), "t", "a", "b")["valid"] is False
+    def biased(prompt: str) -> tuple[str, float]:
+        return '{"better": "A", "score_A": 8, "score_B": 5, "reason": "x"}', 0.0
+
+    def consistent(prompt: str) -> tuple[str, float]:
+        better = "A" if prompt.index("good()") < prompt.index("bad()") else "B"
+        return json.dumps({"better": better, "score_A": 5, "score_B": 5}), 0.0
+
+    assert pairwise(biased, "t", {"none": "x", "standards": "y"})["winner"] == "tie"
+    assert pairwise(consistent, "t", {"none": "bad()", "standards": "good()"})["winner"] == "standards"
+    assert pairwise(lambda prompt: ("garbled", 0.0), "t", {"none": "a", "standards": "b"})["valid"] is False
     print("ok  judge self-check")

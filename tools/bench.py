@@ -35,6 +35,7 @@ import subprocess
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -57,6 +58,17 @@ from judge import pairwise  # noqa: E402
 
 STANDARDS_CFG = standards.tomllib.loads((TEMPLATES / "standards.toml").read_text(encoding="utf-8"))
 SEVERITY = {"high": 3, "medium": 2, "low": 1}
+
+
+@dataclass(frozen=True)
+class Agent:
+    """How `run_claude` starts the CLI: with the plugin under test or not, its model and tools."""
+    plugin: bool = False
+    model: str | None = None  # None: the pinned agent model, Cfg.model
+    tools: str = "Read,Write,Edit,Bash,PowerShell,Glob,Grep,Skill"
+
+
+MIN_TASKS_FOR_CI = 2  # a bootstrap over fewer tasks has no spread
 
 
 class Cfg:  # set once from the CLI
@@ -104,6 +116,13 @@ def git_init(work: Path) -> None:
     sh(work, "git", "config", "user.name", "bench")
 
 
+def fetch_file(base: str, name: str, dest: Path) -> None:
+    done = subprocess.run([GH, "api", f"{base}/{name}", "-H", "Accept: application/vnd.github.raw"],
+                          capture_output=True, text=True, encoding="utf-8")
+    if done.returncode == 0:
+        (dest / Path(name).name).write_text(done.stdout, encoding="utf-8")
+
+
 def fetch() -> None:
     for slug in TASKS:
         dest = TASKS_DIR / slug
@@ -111,10 +130,7 @@ def fetch() -> None:
         base = f"repos/exercism/python/contents/exercises/practice/{slug}"
         for name in [f"{module(slug)}.py", f"{module(slug)}_test.py", ".docs/instructions.md",
                      ".docs/instructions.append.md"]:
-            done = subprocess.run([GH, "api", f"{base}/{name}", "-H", "Accept: application/vnd.github.raw"],
-                                  capture_output=True, text=True, encoding="utf-8")
-            if done.returncode == 0:
-                (dest / Path(name).name).write_text(done.stdout, encoding="utf-8")
+            fetch_file(base, name, dest)
         print(f"fetched {slug}")
 
 
@@ -122,13 +138,12 @@ def fetch() -> None:
 # Agent invocation and shared scoring
 # --------------------------------------------------------------------------------------
 
-def run_claude(cwd: Path, text: str, plugin: bool, model: str | None = None,
-               tools: str = "Read,Write,Edit,Bash,PowerShell,Glob,Grep,Skill") -> list[dict]:
+def run_claude(cwd: Path, text: str, agent: Agent = Agent()) -> list[dict]:
     cmd = [shutil.which("claude") or "claude", "-p", text, "--output-format", "stream-json",
-           "--verbose", "--setting-sources", "project", "--strict-mcp-config", "--allowedTools", tools]
-    if plugin:
+           "--verbose", "--setting-sources", "project", "--strict-mcp-config", "--allowedTools", agent.tools]
+    if agent.plugin:
         cmd += ["--plugin-dir", str(Cfg.plugin_dir)]
-    cmd += ["--model", model or Cfg.model]
+    cmd += ["--model", agent.model or Cfg.model]
     if Cfg.halted:
         raise UsageLimit
     done = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8",
@@ -237,9 +252,10 @@ def phase1(slug: str, arm: str, rep: int) -> dict:
         return done
     work = Cfg.work() / arm / f"{slug}-r{rep}"
     prepare(slug, arm, work)
+    agent = Agent(plugin=arm == "standards")
     events = run_claude(work, f"Complete the task described in INSTRUCTIONS.md by editing {module(slug)}.py. "
                               f"The tests are in {module(slug)}_test.py (run with `python -m unittest`); do not "
-                              f"edit them. When you are done, commit your work to git.", plugin=arm == "standards")
+                              f"edit them. When you are done, commit your work to git.", agent)
     test_file = f"{module(slug)}_test.py"
     shutil.copy(TASKS_DIR / slug / test_file, work / test_file)  # anti-tamper before grading
     result = {"task": slug, "arm": arm, "rep": rep, **usage(events),
@@ -262,6 +278,21 @@ def save(out: Path, result: dict, events: list[dict]) -> None:
 # Phase 2: change cost, by a neutral agent
 # --------------------------------------------------------------------------------------
 
+def commit_start(work: Path) -> None:
+    git_init(work)
+    sh(work, "git", "add", "-A")
+    sh(work, "git", "commit", "-q", "-m", "start")
+
+
+def diff_size(work: Path, path: str) -> tuple[int, int]:
+    """(added, deleted) lines in `path` since the start commit."""
+    added = deleted = 0
+    for row in sh(work, "git", "diff", "--numstat", "HEAD", "--", path).stdout.splitlines():
+        a, d, _ = row.split("\t", 2)
+        added, deleted = added + int(a), deleted + int(d)
+    return added, deleted
+
+
 def phase2(slug: str, arm: str, rep: int) -> dict | None:
     out = Cfg.out() / "followup" / arm / f"{slug}-r{rep}.json"
     if done := finished(out):
@@ -276,17 +307,12 @@ def phase2(slug: str, arm: str, rep: int) -> dict | None:
     shutil.copy(src / f"{m}.py", work / f"{m}.py")
     shutil.copy(TASKS_DIR / slug / f"{m}_test.py", work / f"{m}_test.py")
     shutil.copy(TASKS_DIR / slug / "FOLLOWUP.md", work / "FOLLOWUP.md")
-    git_init(work)
-    sh(work, "git", "add", "-A")
-    sh(work, "git", "commit", "-q", "-m", "start")
+    commit_start(work)
     events = run_claude(work, f"Implement the requirement in FOLLOWUP.md by changing {m}.py. Keep the existing "
-                              f"tests in {m}_test.py passing and do not edit them.", plugin=False)
+                              f"tests in {m}_test.py passing and do not edit them.")
     shutil.copy(TASKS_DIR / slug / f"{m}_test.py", work / f"{m}_test.py")
     shutil.copy(TASKS_DIR / slug / "followup_test.py", work / "followup_test.py")
-    added = deleted = 0
-    for row in sh(work, "git", "diff", "--numstat", "HEAD", "--", f"{m}.py").stdout.splitlines():
-        a, d, _ = row.split("\t", 2)
-        added, deleted = added + int(a), deleted + int(d)
+    added, deleted = diff_size(work, f"{m}.py")
     result = {"task": slug, "arm": arm, "rep": rep, **usage(events),
               "followup_pass": tests_pass(work, "followup_test"),
               "original_still_pass": tests_pass(work, f"{m}_test"),
@@ -309,9 +335,17 @@ def hidden_suites(slug: str, upto: int) -> list[str]:
     return [f"{module(slug)}_test"] + [f"followup{'' if k == 1 else k}_test" for k in range(1, upto + 1)]
 
 
-def chain_step(slug: str, arm: str, rep: int, k: int) -> dict | None:
-    """Follow-up k on top of step k-1's code. A regression is a hidden suite that passed before
-    this step and fails after it; research shows multi-step chains expose what one step cannot."""
+def copy_specs(slug: str, k: int, work: Path) -> None:
+    """FOLLOWUP.md through FOLLOWUP{k}.md: every requirement up to this step."""
+    for spec in sorted((TASKS_DIR / slug).glob("FOLLOWUP*.md")):
+        if spec.stem == "FOLLOWUP" or int(spec.stem.removeprefix("FOLLOWUP")) <= k:
+            shutil.copy(spec, work / spec.name)
+
+
+def chain_step(run: tuple[str, str, int], k: int) -> dict | None:
+    """Follow-up k on top of step k-1's code for run (slug, arm, rep). A regression is a hidden suite
+    that passed before this step and fails after it; multi-step chains expose what one step cannot."""
+    slug, arm, rep = run
     out = Cfg.out() / step_dir(k) / arm / f"{slug}-r{rep}.json"
     if done := finished(out):
         return done
@@ -325,15 +359,11 @@ def chain_step(slug: str, arm: str, rep: int, k: int) -> dict | None:
     fresh_dir(work)
     shutil.copy(prev / f"{m}.py", work / f"{m}.py")
     shutil.copy(TASKS_DIR / slug / f"{m}_test.py", work / f"{m}_test.py")
-    for spec in sorted((TASKS_DIR / slug).glob("FOLLOWUP*.md")):
-        if spec.stem == "FOLLOWUP" or int(spec.stem.removeprefix("FOLLOWUP")) <= k:
-            shutil.copy(spec, work / spec.name)
-    git_init(work)
-    sh(work, "git", "add", "-A")
-    sh(work, "git", "commit", "-q", "-m", "start")
+    copy_specs(slug, k, work)
+    commit_start(work)
     events = run_claude(work, f"Implement the requirement in FOLLOWUP{k}.md by changing {m}.py. The earlier "
                               f"requirements in the other FOLLOWUP*.md files must keep working, and the tests in "
-                              f"{m}_test.py must keep passing; do not edit them.", plugin=False)
+                              f"{m}_test.py must keep passing; do not edit them.")
     for s in hidden_suites(slug, k):
         shutil.copy(TASKS_DIR / slug / f"{s}.py", work / f"{s}.py")
     after = {s: tests_pass(work, s) for s in hidden_suites(slug, k)}
@@ -350,7 +380,7 @@ def chain_step(slug: str, arm: str, rep: int, k: int) -> dict | None:
 
 def chain(slug: str, arm: str, rep: int) -> None:
     for k in CHAIN_STEPS:
-        if chain_step(slug, arm, rep, k) is None:
+        if chain_step((slug, arm, rep), k) is None:
             return
 
 
@@ -360,7 +390,7 @@ def chain(slug: str, arm: str, rep: int) -> None:
 
 def ask_judge(prompt: str) -> tuple[str, float]:
     with tempfile.TemporaryDirectory() as tmp:
-        result = usage(run_claude(Path(tmp), prompt, plugin=False, model=JUDGE_MODEL, tools=""))
+        result = usage(run_claude(Path(tmp), prompt, Agent(model=JUDGE_MODEL, tools="")))
     return result["result_text"], result["cost_usd"]
 
 
@@ -375,7 +405,7 @@ def judge(slug: str, rep: int) -> dict | None:
         return None
     task = (TASKS_DIR / slug / "instructions.md").read_text(encoding="utf-8")[:2500]
     code = {arm: p.read_text(encoding="utf-8") for arm, p in paths.items()}
-    result = {"task": slug, "rep": rep, **pairwise(ask_judge, task, code["none"], code["standards"])}
+    result = {"task": slug, "rep": rep, **pairwise(ask_judge, task, {arm: code[arm] for arm in ARMS})}
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(f"judge {slug:<14} r{rep} {result.get('order1', 'invalid')}/{result.get('order2', '-')} "
@@ -412,7 +442,7 @@ def task_diffs(rows: list[dict], key: str) -> list[float]:
 def paired_ci(rows: list[dict], key: str) -> tuple[float, float, float] | None:
     """Mean per-task difference with a 95% percentile bootstrap CI over tasks."""
     diffs = task_diffs(rows, key)
-    if len(diffs) < 2:
+    if len(diffs) < MIN_TASKS_FOR_CI:
         return None
     rng = random.Random(0)
     boots = sorted(statistics.mean(rng.choices(diffs, k=len(diffs))) for _ in range(5000))
@@ -454,6 +484,10 @@ def models_used(rows: list[dict]) -> dict:
     return {arm: sorted({r.get("model", "?") for r in rows if r["arm"] == arm}) for arm in ARMS}
 
 
+def fmt(v: float | None) -> str:
+    return "—" if v is None else f"{v:,.2f}"
+
+
 def table(title: str, rows: list[dict], keys: list[tuple[str, str]]) -> dict:
     used = models_used(rows)
     if any(len(m) != 1 for m in used.values()) or len({m[0] for m in used.values() if m}) > 1:
@@ -465,7 +499,6 @@ def table(title: str, rows: list[dict], keys: list[tuple[str, str]]) -> dict:
         a, b, p = mean(rows, "none", key), mean(rows, "standards", key), paired_p(rows, key)
         ci = paired_ci(rows, key)
         summary[key] = {"none": a, "standards": b, "p": p, "ci": ci}
-        fmt = lambda v: "—" if v is None else f"{v:,.2f}"
         ci_text = "" if ci is None else f"   {ci[0]:+,.2f} [{ci[1]:+,.2f}, {ci[2]:+,.2f}]"
         print(f"  {label:<28}{fmt(a):>11}{fmt(b):>11}{'' if p is None else f'{p:.3f}':>8}{ci_text}")
     return summary
@@ -498,8 +531,7 @@ def safe(fn, *args):
         return None
 
 
-def main(argv: list[str]) -> int:
-    sys.stdout.reconfigure(encoding="utf-8")
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=["fetch", "run", "followup", "chain", "judge", "all", "report"])
     parser.add_argument("--variant", default="current")
@@ -510,17 +542,26 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--parallel", type=int, default=4)
     parser.add_argument("--plugin-dir", default=str(ROOT), help="skill version under test (e.g. a worktree)")
     parser.add_argument("--claude-md", default=None, help="file replacing the always-loaded CLAUDE.md block")
-    cfg = parser.parse_args(argv)
-    Cfg.variant, Cfg.plugin_dir, Cfg.model = cfg.variant, Path(cfg.plugin_dir).resolve(), cfg.model
-    if cfg.claude_md:
-        Cfg.claude_md = Path(cfg.claude_md).read_text(encoding="utf-8")
+    return parser
+
+
+def stage_jobs(cfg: argparse.Namespace) -> dict[str, list]:
     tasks, arms, reps = cfg.tasks.split(","), cfg.arms.split(","), range(1, cfg.reps + 1)
-    jobs = {
+    return {
         "run": [(phase1, (t, a, r)) for r in reps for t in tasks for a in arms],
         "followup": [(phase2, (t, a, r)) for r in reps for t in tasks for a in arms],
         "chain": [(chain, (t, a, r)) for r in reps for t in tasks for a in arms],
         "judge": [(judge, (t, r)) for r in reps for t in tasks],
     }
+
+
+def main(argv: list[str]) -> int:
+    sys.stdout.reconfigure(encoding="utf-8")
+    cfg = build_parser().parse_args(argv)
+    Cfg.variant, Cfg.plugin_dir, Cfg.model = cfg.variant, Path(cfg.plugin_dir).resolve(), cfg.model
+    if cfg.claude_md:
+        Cfg.claude_md = Path(cfg.claude_md).read_text(encoding="utf-8")
+    jobs = stage_jobs(cfg)
     if cfg.command == "fetch":
         fetch()
         return 0
