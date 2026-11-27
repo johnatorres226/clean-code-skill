@@ -1,19 +1,20 @@
 """Research-backed code-quality metrics for a Python file. Eval tooling only (deps: `uv sync`).
 
-  maintainability_index  Oman & Hagemeister 1992 (radon's variant, 0-100, higher is better).
-                         Its comment term rewards comment density — criticized by Heitlager,
-                         Kuipers & Visser 2007 — so a skill that deletes redundant comments lowers it.
-  mi_structural          the same formula with the comment term removed: the primary MI here
-  comment_ratio          (comment + docstring lines) / sloc
-  cc_max / cc_mean       McCabe 1976 cyclomatic complexity per function
-  cognitive_max / _total Campbell 2018 (SonarSource); validated vs. human understandability,
-                         Muñoz Barón, Wyrich & Wagner, ESEM 2020
-  halstead_volume        Halstead 1977
-  sloc                   source lines of code (no blanks/comments)
-  runtime_ms             median of 20 in-process test-suite runs (startup excluded)
-  ruff_violations        fixed, isolated ruff rule set (pyflakes, pycodestyle, bugbear, simplify,
-                         pylint-refactor, naming, return) — repo config never leaks in
+maintainability_index  Oman & Hagemeister 1992 (radon's variant, 0-100, higher is better).
+                       Its comment term rewards comment density — criticized by Heitlager,
+                       Kuipers & Visser 2007 — so a skill that deletes redundant comments lowers it.
+mi_structural          the same formula with the comment term removed: the primary MI here
+comment_ratio          (comment + docstring lines) / sloc
+cc_max / cc_mean       McCabe 1976 cyclomatic complexity per function
+cognitive_max / _total Campbell 2018 (SonarSource); validated vs. human understandability,
+                       Muñoz Barón, Wyrich & Wagner, ESEM 2020
+halstead_volume        Halstead 1977
+sloc                   source lines of code (no blanks/comments)
+runtime_ms             median of 20 in-process test-suite runs (startup excluded)
+ruff_violations        fixed, isolated ruff rule set (pyflakes, pycodestyle, bugbear, simplify,
+                       pylint-refactor, naming, return) — repo config never leaks in
 """
+
 from __future__ import annotations
 
 import ast
@@ -32,8 +33,11 @@ RUFF_RULES = "E,F,W,B,SIM,C4,PLR,N,RET"
 
 def ruff_violations(path: Path) -> int:
     ruff = Path(sys.executable).parent / "ruff"
-    done = subprocess.run([str(ruff), "check", "--isolated", "--no-cache", "--select", RUFF_RULES,
-                           "--output-format", "json", str(path)], capture_output=True, text=True)
+    done = subprocess.run(
+        [str(ruff), "check", "--isolated", "--no-cache", "--select", RUFF_RULES, "--output-format", "json", str(path)],
+        capture_output=True,
+        text=True,
+    )
     return len(json.loads(done.stdout or "[]"))
 
 
@@ -74,8 +78,14 @@ print(statistics.median(times) * 1000)
 
 
 def runtime_ms(work: Path, test_module: str, env: dict | None = None) -> float | None:
-    done = subprocess.run([sys.executable, "-c", RUNTIME_SNIPPET, test_module], cwd=work, env=env,
-                          capture_output=True, text=True, timeout=600)
+    done = subprocess.run(
+        [sys.executable, "-c", RUNTIME_SNIPPET, test_module],
+        cwd=work,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
     try:
         return round(float(done.stdout.strip().splitlines()[-1]), 3)
     except (ValueError, IndexError):

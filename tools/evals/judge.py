@@ -4,6 +4,7 @@ Each pair is judged twice with the presentation order swapped; a verdict counts 
 orders agree (Zheng et al. 2023, "Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena").
 The caller supplies `ask(prompt) -> (reply_text, cost_usd)`, so this module has no CLI coupling.
 """
+
 from __future__ import annotations
 
 import json
@@ -11,7 +12,8 @@ import re
 import statistics
 from collections.abc import Callable
 
-JUDGE_PROMPT = """You are reviewing two solutions to the same task. Both pass the same unit tests.
+JUDGE_PROMPT = (
+    """You are reviewing two solutions to the same task. Both pass the same unit tests.
 Judge which one a maintainer would rather own: readability, naming, function size and
 complexity, duplication, structure that would absorb the next requirement, and efficiency.
 Do not reward length or comments for their own sake. Use no tools.
@@ -25,8 +27,9 @@ Task:
 === Solution B ===
 {b}
 
-Reply with only a JSON object: """ \
+Reply with only a JSON object: """
     '{{"better": "A" or "B" or "tie", "score_A": 1-10, "score_B": 1-10, "reason": "<one sentence>"}}'
+)
 
 Ask = Callable[[str], "tuple[str, float]"]
 
@@ -50,7 +53,8 @@ def pairwise(ask: Ask, task: str, code: dict[str, str]) -> dict:
     if not v1.get("better") or not v2.get("better"):  # an unparseable reply is no verdict, not a tie
         return {"valid": False, "replies": [reply1[-300:], reply2[-300:]], "cost_usd": cost1 + cost2}
     return {
-        "order1": pick1, "order2": pick2,
+        "order1": pick1,
+        "order2": pick2,
         "winner": pick1 if pick1 == pick2 else "tie",  # disagreement across orders = position bias
         f"score_{a_label}": statistics.mean([v1.get("score_A", 0), v2.get("score_B", 0)]),
         f"score_{b_label}": statistics.mean([v1.get("score_B", 0), v2.get("score_A", 0)]),

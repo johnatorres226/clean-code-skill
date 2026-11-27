@@ -1,4 +1,5 @@
 """Self-check for tools/regress.py. Run: python tests/test_regress.py"""
+
 import sys
 from pathlib import Path
 
