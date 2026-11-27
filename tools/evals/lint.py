@@ -23,7 +23,6 @@ import re
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from types import SimpleNamespace
 
 # --------------------------------------------------------------------------------------
 # Configuration
@@ -91,6 +90,15 @@ class Finding:
         location = f"{self.path}:{self.line}"
         head = f"  {location:<48} [{self.code}] {self.message}"
         return head + (f"\n{'':<52}→ {self.hint}" if self.hint else "")
+
+
+@dataclass(frozen=True)
+class SourceFile:
+    """A C-like file the per-line checks read: its display path, suffix and lines."""
+
+    rel: str
+    suffix: str
+    lines: list[str]
 
 
 @dataclass
@@ -180,23 +188,26 @@ def todo_findings(rel: str, lines: list[str], markers: tuple[str, ...]) -> list[
     return findings
 
 
+def file_size_findings(rel: str, line_count: int, cfg: argparse.Namespace) -> list[Finding]:
+    if line_count <= cfg.max_file_lines:
+        return []
+    return [
+        Finding(
+            rel,
+            1,
+            "G8",
+            "medium",
+            f"File is {line_count} lines (limit {cfg.max_file_lines}).",
+            "Large files usually hold several concepts. Consider splitting by responsibility.",
+        )
+    ]
+
+
 def check_common_text(path: Path, lines: list[str], cfg: argparse.Namespace) -> list[Finding]:
     """Checks that apply to every language and need only the raw text."""
-    findings: list[Finding] = []
     rel = str(path)
     text = [raw.rstrip("\n") for raw in lines]
-
-    if len(lines) > cfg.max_file_lines:
-        findings.append(
-            Finding(
-                rel,
-                1,
-                "G8",
-                "medium",
-                f"File is {len(lines)} lines (limit {cfg.max_file_lines}).",
-                "Large files usually hold several concepts. Consider splitting by responsibility.",
-            )
-        )
+    findings = file_size_findings(rel, len(lines), cfg)
     findings += [
         Finding(
             rel,
@@ -513,35 +524,40 @@ def limit_findings(rel: str, node: ast.FunctionDef | ast.AsyncFunctionDef, cfg: 
     return [Finding(rel, node.lineno, code, "medium", message, hint) for hit, code, message, hint in checks if hit]
 
 
-def naming_findings(rel: str, node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[Finding]:
-    findings: list[Finding] = []
-    # N1: uninformative names.
-    if len(node.name) <= SHORT_NAME_LENGTH and not node.name.startswith("__"):
-        findings.append(
-            Finding(
-                rel,
-                node.lineno,
-                "N1",
-                "medium",
-                f"Function name `{node.name}` is too short to state intent.",
-                "Name it as a verb phrase describing the one thing it does.",
-            )
+def short_name_findings(rel: str, node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[Finding]:
+    if len(node.name) > SHORT_NAME_LENGTH or node.name.startswith("__"):
+        return []
+    return [
+        Finding(
+            rel,
+            node.lineno,
+            "N1",
+            "medium",
+            f"Function name `{node.name}` is too short to state intent.",
+            "Name it as a verb phrase describing the one thing it does.",
         )
-    # Public functions should have a docstring stating the contract.
+    ]
+
+
+def docstring_findings(rel: str, node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[Finding]:
+    """A public function longer than trivial must state its contract."""
     public = not node.name.startswith("_")
-    if public and ast.get_docstring(node) is None and python_body_lines(node) > TRIVIAL_BODY_LINES:
-        findings.append(
-            Finding(
-                rel,
-                node.lineno,
-                "C1",
-                "low",
-                f"Public function `{node.name}` has no docstring.",
-                "Document the contract: params, return, raises. Skip it for trivial functions.",
-            )
+    if not public or ast.get_docstring(node) is not None or python_body_lines(node) <= TRIVIAL_BODY_LINES:
+        return []
+    return [
+        Finding(
+            rel,
+            node.lineno,
+            "C1",
+            "low",
+            f"Public function `{node.name}` has no docstring.",
+            "Document the contract: params, return, raises. Skip it for trivial functions.",
         )
-    # Uninformative local names.
-    return findings + [
+    ]
+
+
+def local_name_findings(rel: str, node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[Finding]:
+    return [
         Finding(
             rel,
             child.lineno,
@@ -562,7 +578,9 @@ def _python_function_findings(
         param_findings(rel, node, cfg)
         + flag_param_findings(rel, node)
         + limit_findings(rel, node, cfg)
-        + naming_findings(rel, node)
+        + short_name_findings(rel, node)
+        + docstring_findings(rel, node)
+        + local_name_findings(rel, node)
     )
 
 
@@ -745,7 +763,7 @@ def c_function_findings(rel: str, func: FunctionInfo, cfg: argparse.Namespace) -
     ]
 
 
-def catch_findings(src: SimpleNamespace, index: int, scrubbed: str) -> list[Finding]:
+def catch_findings(src: SourceFile, index: int, scrubbed: str) -> list[Finding]:
     """G4: silently swallowed exceptions."""
     findings: list[Finding] = []
     if re.search(r"catch\s*\([^)]*\)\s*\{\s*\}", scrubbed):
@@ -773,7 +791,7 @@ def catch_findings(src: SimpleNamespace, index: int, scrubbed: str) -> list[Find
     return findings
 
 
-def c_memory_findings(src: SimpleNamespace, index: int, scrubbed: str) -> list[Finding]:
+def c_memory_findings(src: SourceFile, index: int, scrubbed: str) -> list[Finding]:
     """C: manual memory / unchecked calls."""
     if src.suffix not in C_SUFFIXES:
         return []
@@ -805,7 +823,7 @@ def c_memory_findings(src: SimpleNamespace, index: int, scrubbed: str) -> list[F
     return findings
 
 
-def cpp_findings(src: SimpleNamespace, index: int, scrubbed: str) -> list[Finding]:
+def cpp_findings(src: SourceFile, index: int, scrubbed: str) -> list[Finding]:
     """C++: raw owning allocation, header-scope using-directives."""
     if src.suffix not in CPP_SUFFIXES:
         return []
@@ -846,7 +864,7 @@ def cpp_findings(src: SimpleNamespace, index: int, scrubbed: str) -> list[Findin
     return findings
 
 
-def java_findings(src: SimpleNamespace, index: int, scrubbed: str) -> list[Finding]:
+def java_findings(src: SourceFile, index: int, scrubbed: str) -> list[Finding]:
     """Java: returning null, raw types."""
     if src.suffix != ".java":
         return []
@@ -876,7 +894,7 @@ def java_findings(src: SimpleNamespace, index: int, scrubbed: str) -> list[Findi
     return findings
 
 
-def c_line_findings(src: SimpleNamespace, index: int, scrubbed: str) -> list[Finding]:
+def c_line_findings(src: SourceFile, index: int, scrubbed: str) -> list[Finding]:
     findings = (
         catch_findings(src, index, scrubbed)
         + c_memory_findings(src, index, scrubbed)
@@ -901,7 +919,7 @@ def c_line_findings(src: SimpleNamespace, index: int, scrubbed: str) -> list[Fin
 def analyze_c_like(path: Path, lines: list[str], cfg: argparse.Namespace) -> list[Finding]:
     rel = str(path)
     findings = [finding for func in find_c_functions(lines) for finding in c_function_findings(rel, func, cfg)]
-    src = SimpleNamespace(rel=rel, suffix=path.suffix, lines=lines)
+    src = SourceFile(rel, path.suffix, lines)
     for index, raw in enumerate(lines, start=1):
         findings += c_line_findings(src, index, strip_strings_and_comments(raw.rstrip("\n")))
     return findings
