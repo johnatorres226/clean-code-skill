@@ -27,6 +27,11 @@ TOKENS_PER_WORD = 4 / 3
 
 DEFAULT_SKILL_BUDGET = 3000      # always-loaded tier (SKILL.md body)
 DEFAULT_REFERENCE_BUDGET = 3500  # any single reference file
+MIN_DESCRIPTION_WORDS = 25       # fewer, and the description cannot name its trigger contexts
+MIN_SUMMARY_WORDS = 80           # a shorter section is a pointer, not a summary that shadows
+MIN_DUPLICATE_WORDS = 25         # shorter repeated paragraphs are boilerplate, not drift risk
+REF_LINK = re.compile(r"(?<![\w./-])references/([A-Za-z0-9._\-]+\.md)")  # own refs, not ../other-skill/
+SCRIPT_LINK = re.compile(r"scripts/([A-Za-z0-9._\-]+\.(?:py|sh))")
 
 
 @dataclass
@@ -107,42 +112,41 @@ def check_frontmatter(skill_md: Path, result: AuditResult) -> None:
     match = re.search(r"description:\s*(.+?)(?=\n[a-z_]+:|\Z)", block, re.S)
     if match:
         words = len(match.group(1).split())
-        if words < 25:
+        if words < MIN_DESCRIPTION_WORDS:
             result.issues.append(Issue("medium", "frontmatter",
                                        f"Description is only {words} words.",
                                        "Descriptions are the sole trigger signal — name concrete "
                                        "contexts and phrases, not just what the skill does."))
 
 
-def check_links(skill_dir: Path, result: AuditResult) -> None:
-    """Every referenced file must exist, and every reference must be reachable."""
-    linked: set[str] = set()
+def links(skill_dir: Path) -> list[tuple[Path, str, str]]:
+    """(file, folder, target) for every references/ and scripts/ link, in file order."""
+    found = []
     for md in sorted(skill_dir.rglob("*.md")):
         text = md.read_text(encoding="utf-8", errors="replace")
-        # own refs, not ../other-skill/
-        for target in re.findall(r"(?<![\w./-])references/([A-Za-z0-9._\-]+\.md)", text):
-            linked.add(target)
-            if not (skill_dir / "references" / target).exists():
-                result.issues.append(Issue(
-                    "high", "broken-link",
-                    f"{md.relative_to(skill_dir)} points at missing references/{target}.",
-                    "Fix the path or restore the file.",
-                ))
-        for target in re.findall(r"scripts/([A-Za-z0-9._\-]+\.(?:py|sh))", text):
-            if not (skill_dir / "scripts" / target).exists():
-                result.issues.append(Issue(
-                    "high", "broken-link",
-                    f"{md.relative_to(skill_dir)} points at missing scripts/{target}.", ""))
+        found += [(md, "references", target) for target in REF_LINK.findall(text)]
+        found += [(md, "scripts", target) for target in SCRIPT_LINK.findall(text)]
+    return found
 
-    ref_dir = skill_dir / "references"
-    if ref_dir.exists():
-        for ref in sorted(ref_dir.glob("*.md")):
-            if ref.name not in linked:
-                result.issues.append(Issue(
-                    "medium", "orphan",
-                    f"references/{ref.name} is never linked from anywhere.",
-                    "Unreachable references are pure weight — link it or delete it.",
-                ))
+
+def check_links(skill_dir: Path, result: AuditResult) -> None:
+    """Every referenced file must exist, and every reference must be reachable."""
+    found = links(skill_dir)
+    for md, folder, target in found:
+        if not (skill_dir / folder / target).exists():
+            result.issues.append(Issue(
+                "high", "broken-link",
+                f"{md.relative_to(skill_dir)} points at missing {folder}/{target}.",
+                "Fix the path or restore the file." if folder == "references" else "",
+            ))
+    linked = {target for _, folder, target in found if folder == "references"}
+    for ref in sorted((skill_dir / "references").glob("*.md")):
+        if ref.name not in linked:
+            result.issues.append(Issue(
+                "medium", "orphan",
+                f"references/{ref.name} is never linked from anywhere.",
+                "Unreachable references are pure weight — link it or delete it.",
+            ))
 
 
 def check_routing_table(skill_md: Path, skill_dir: Path, result: AuditResult) -> None:
@@ -161,9 +165,8 @@ def check_routing_table(skill_md: Path, skill_dir: Path, result: AuditResult) ->
             ))
 
 
-def check_budget(result: AuditResult, skill_budget: int, ref_budget: int,
-                 config: dict) -> None:
-    skill_budget = config.get("skill_md_budget", skill_budget)
+def check_budget(result: AuditResult, config: dict) -> None:
+    skill_budget, ref_budget = config["skill_md_budget"], config["reference_budget"]
     partial_access = set(config.get("partial_access_files", []))
 
     if result.skill_md and result.skill_md.tokens > skill_budget:
@@ -189,14 +192,13 @@ def check_budget(result: AuditResult, skill_budget: int, ref_budget: int,
         ))
 
 
-def check_escalation_triggers(skill_md: Path, skill_dir: Path, result: AuditResult,
-                              config: dict) -> None:
+def check_escalation_triggers(skill_dir: Path, result: AuditResult, config: dict) -> None:
     """A summary in SKILL.md that duplicates a reference must say when to open it.
 
     Without that line the summary shadows the reference: it reads as sufficient, so
     the better material never loads.
     """
-    text = skill_md.read_text(encoding="utf-8")
+    text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
     sections = re.split(r"\n## ", text)
     # Sections declared core are always-needed content, not summaries of a reference.
     # They should NOT hand off, so an absent escalation trigger is correct there.
@@ -209,7 +211,7 @@ def check_escalation_triggers(skill_md: Path, skill_dir: Path, result: AuditResu
         # Does this section's topic match a reference file name?
         matched = [s for s in ref_stems if any(
             token in s for token in re.findall(r"[a-z]{4,}", title))]
-        if not matched or len(section.split()) < 80:
+        if not matched or len(section.split()) < MIN_SUMMARY_WORDS:
             continue
         if any(marker in title for marker in core):
             continue
@@ -223,22 +225,24 @@ def check_escalation_triggers(skill_md: Path, skill_dir: Path, result: AuditResu
             ))
 
 
+def long_paragraphs(md: Path):
+    for para in md.read_text(encoding="utf-8", errors="replace").split("\n\n"):
+        normalized = " ".join(para.split()).lower()
+        if len(normalized.split()) >= MIN_DUPLICATE_WORDS:
+            yield normalized
+
+
 def check_duplication(skill_dir: Path, result: AuditResult, config: dict) -> None:
     """Flag near-identical paragraphs across references (drift risk)."""
     paragraphs: dict[str, list[str]] = {}
-    for md in sorted((skill_dir / "references").glob("*.md")) if (skill_dir / "references").exists() else []:
-        for para in md.read_text(encoding="utf-8", errors="replace").split("\n\n"):
-            normalized = " ".join(para.split()).lower()
-            if len(normalized.split()) < 25:
-                continue
+    for md in sorted((skill_dir / "references").glob("*.md")):
+        for normalized in long_paragraphs(md):
             paragraphs.setdefault(normalized, []).append(md.name)
 
-    for normalized, files in paragraphs.items():
+    declared = [set(pair) for pair in config.get("deliberate_duplication", [])]
+    for files in paragraphs.values():
         unique = sorted(set(files))
-        declared = [set(pair) for pair in config.get("deliberate_duplication", [])]
-        if len(unique) > 1 and set(unique) in declared:
-            continue
-        if len(unique) > 1:
+        if len(unique) > 1 and set(unique) not in declared:
             result.issues.append(Issue(
                 "low", "duplication",
                 f"Identical paragraph in {' and '.join(unique)}.",
@@ -252,9 +256,15 @@ def check_duplication(skill_dir: Path, result: AuditResult, config: dict) -> Non
 # --------------------------------------------------------------------------------------
 
 
+def measure_dir(directory: Path, root: Path) -> list[FileStat]:
+    items = sorted(directory.iterdir()) if directory.exists() else []
+    return [measure(item, root) for item in items if item.is_file()]
+
+
 def audit(skill_dir: Path, skill_budget: int, ref_budget: int) -> AuditResult:
     result = AuditResult(skill_name=skill_dir.name)
-    config = load_config(skill_dir)
+    # a skill's own config may raise its SKILL.md budget; the reference budget is global
+    config = {"skill_md_budget": skill_budget} | load_config(skill_dir) | {"reference_budget": ref_budget}
 
     skill_md = skill_dir / "SKILL.md"
     if not skill_md.exists():
@@ -262,20 +272,15 @@ def audit(skill_dir: Path, skill_budget: int, ref_budget: int) -> AuditResult:
         return result
 
     result.skill_md = measure(skill_md, skill_dir)
-    for sub, bucket in (("references", result.references),
-                        ("scripts", result.scripts),
-                        ("assets", result.assets)):
-        directory = skill_dir / sub
-        if directory.exists():
-            for item in sorted(directory.iterdir()):
-                if item.is_file():
-                    bucket.append(measure(item, skill_dir))
+    result.references = measure_dir(skill_dir / "references", skill_dir)
+    result.scripts = measure_dir(skill_dir / "scripts", skill_dir)
+    result.assets = measure_dir(skill_dir / "assets", skill_dir)
 
     check_frontmatter(skill_md, result)
     check_links(skill_dir, result)
     check_routing_table(skill_md, skill_dir, result)
-    check_budget(result, skill_budget, ref_budget, config)
-    check_escalation_triggers(skill_md, skill_dir, result, config)
+    check_budget(result, config)
+    check_escalation_triggers(skill_dir, result, config)
     check_duplication(skill_dir, result, config)
     return result
 
@@ -303,13 +308,11 @@ def report(result: AuditResult) -> None:
     print(f"\nISSUES ({len(result.issues)})")
     for severity in ("high", "medium", "low"):
         items = [i for i in result.issues if i.severity == severity]
-        if not items:
-            continue
-        print(f"\n  {severity.upper()}")
+        if items:
+            print(f"\n  {severity.upper()}")
         for issue in items:
-            print(f"    [{issue.kind}] {issue.message}")
-            if issue.hint:
-                print(f"      → {issue.hint}")
+            hint = f"\n      → {issue.hint}" if issue.hint else ""
+            print(f"    [{issue.kind}] {issue.message}{hint}")
 
 
 def main(argv: list[str] | None = None) -> int:
