@@ -36,6 +36,7 @@ from pathlib import Path
 FAST_GATES = ("format", "lint", "secrets")
 COMMIT_GATES = ("secrets",)  # scan the staged diff: a full check has nothing staged
 SHELL_OPS = {"&&", "||", ";", "|"}
+BLOCK = 2  # guard exit code: block the tool call and show stderr to the agent
 ALWAYS_ALLOWED_MSG = re.compile(r"^(Merge |Revert |fixup! |squash! |amend! )")
 
 
@@ -95,9 +96,12 @@ def size_problem(numstat: str, cfg: dict, limit_key: str = "commits") -> str | N
     return None
 
 
-def cmd_check(cfg: dict, fast: bool) -> int:
-    wanted = (lambda n: n in FAST_GATES) if fast else (lambda n: n not in COMMIT_GATES)
-    return run_gates({n: c for n, c in cfg.get("gates", {}).items() if wanted(n)})
+def cmd_check(cfg: dict) -> int:
+    return run_gates({n: c for n, c in cfg.get("gates", {}).items() if n not in COMMIT_GATES})
+
+
+def cmd_check_fast(cfg: dict) -> int:
+    return run_gates({n: c for n, c in cfg.get("gates", {}).items() if n in FAST_GATES})
 
 
 def run_gates(gates: dict) -> int:
@@ -119,7 +123,7 @@ def cmd_staged(cfg: dict) -> int:
     if branch and (named := branch_problem(branch, cfg)):  # no branch = detached HEAD, e.g. a rebase
         return fail(named)
     problem = size_problem(git("diff", "--cached", "--numstat"), cfg)
-    return fail(f"staged commit: {problem}") if problem else cmd_check(cfg, fast=True)
+    return fail(f"staged commit: {problem}") if problem else cmd_check_fast(cfg)
 
 
 def cmd_commit_msg(cfg: dict, path: str) -> int:
@@ -142,7 +146,7 @@ def cmd_pre_push(cfg: dict, stdin: str) -> int:
     problem = next(filter(None, (branch_problem(b, cfg) for b in branches)), None)
     if problem:
         return fail(problem)
-    return cmd_check(cfg, fast=False) if branches else 0  # a tag-only push changes no branch
+    return cmd_check(cfg) if branches else 0  # a tag-only push changes no branch
 
 
 def head_problem(branch: str, cfg: dict) -> str | None:
@@ -346,9 +350,18 @@ def segments(command: str):
 
 def hooks_bypass(words: list[str]) -> bool:
     # Pointing core.hooksPath at the standards hooks (setup) is fine; any other use skips them.
-    setup = words[:3] == ["git", "config", "core.hooksPath"] and len(words) == 4 \
-        and words[3].rstrip("/").endswith(".githooks")
+    command, value = words[:3], words[3:]
+    setup = command == ["git", "config", "core.hooksPath"] and len(value) == 1 \
+        and value[0].rstrip("/").endswith(".githooks")
     return not setup and any("core.hooksPath" in w for w in words)
+
+
+def push_problem(words: list[str], cfg: dict) -> str | None:
+    if "push" not in words:
+        return None
+    targets = [w.split(":")[-1].removeprefix("refs/heads/") for w in words[words.index("push") + 1:]]
+    hit = [t for t in targets if t in cfg["branches"]["protected"]]
+    return f"push to protected branch '{hit[0]}' — open a PR (skill: ship)" if hit else None
 
 
 def guard_problem(command: str, cfg: dict) -> str | None:
@@ -361,12 +374,8 @@ def guard_problem(command: str, cfg: dict) -> str | None:
         commit_flags = after[:next((i for i, w in enumerate(after) if w in SHELL_OPS), len(after))]
         if "--no-verify" in words or any(re.fullmatch(r"-[a-zA-Z]*n[a-zA-Z]*", w) for w in commit_flags):
             return "--no-verify bypasses the standards hooks; fix the failure instead"
-        if "push" in words:
-            protected = cfg["branches"]["protected"]
-            targets = [w.split(":")[-1].removeprefix("refs/heads/") for w in words[words.index("push") + 1:]]
-            hit = [t for t in targets if t in protected]
-            if hit:
-                return f"push to protected branch '{hit[0]}' — open a PR (skill: ship)"
+        if problem := push_problem(words, cfg):
+            return problem
     return None
 
 
@@ -375,7 +384,7 @@ def cmd_guard(cfg: dict, stdin: str) -> int:
     problem = guard_problem(command, cfg)
     if problem:
         print(f"standards: {problem}", file=sys.stderr)
-        return 2  # exit 2 = block the tool call and show stderr to the agent
+        return BLOCK
     return 0
 
 
@@ -443,7 +452,7 @@ def show(text: str) -> int:
 
 
 COMMANDS = {
-    "check": lambda cfg, args: cmd_check(cfg, fast="--fast" in args),
+    "check": lambda cfg, args: cmd_check_fast(cfg) if "--fast" in args else cmd_check(cfg),
     "staged": lambda cfg, args: cmd_staged(cfg),
     "commit-msg": lambda cfg, args: cmd_commit_msg(cfg, args[0]),
     "pre-push": lambda cfg, args: cmd_pre_push(cfg, sys.stdin.read()),
