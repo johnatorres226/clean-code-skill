@@ -29,6 +29,7 @@ import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PROMPTS = Path(__file__).resolve().parent / "evals" / "prompts.json"
@@ -82,9 +83,54 @@ def build_prompt(case: dict, skill_dir: Path | None) -> str:
 # --------------------------------------------------------------------------------------
 
 
-def run_cases(prompts: list[dict], out_dir: Path, skill_dir: Path | None,
-              model: str | None, timeout_s: int) -> int:
-    out_dir.mkdir(parents=True, exist_ok=True)
+def case_command(cli: str, case: dict, run: SimpleNamespace) -> list[str]:
+    prompt = (
+        build_prompt(case, run.skill_dir)
+        + f"\n\nWrite the complete file. Output ONLY {case['language']} source code, "
+          f"with no markdown fences and no commentary."
+    )
+    # Isolate both arms from the operator's own setup (hooks, plugins, skills, MCP,
+    # project CLAUDE.md) so the only difference between runs is the skill itself.
+    command = [cli, "-p", prompt, "--output-format", "json",
+               "--setting-sources", "", "--strict-mcp-config",
+               "--disable-slash-commands", "--allowedTools", "Read,Grep,Glob"]
+    if run.skill_dir:
+        command += ["--add-dir", str(run.skill_dir)]
+    if run.model:
+        command += ["--model", run.model]
+    return command
+
+
+def save_reply(out_dir: Path, case: dict, reply: dict) -> None:
+    (out_dir / f"{case['id']}.usage.json").write_text(json.dumps({
+        key: reply.get(key) for key in
+        ("usage", "total_cost_usd", "num_turns", "duration_ms")
+    }, indent=2), encoding="utf-8")
+    body = reply["result"].strip()
+    if body.startswith("```"):  # strip fences the model may add anyway
+        body = "\n".join(body.split("\n")[1:-1])
+    target = out_dir / f"{case['id']}.{case['ext']}"
+    target.write_text(body, encoding="utf-8")
+    print(f"  wrote {target}")
+
+
+def run_case(cli: str, case: dict, run: SimpleNamespace) -> None:
+    print(f"running {case['id']} ...", flush=True)
+    try:
+        done = subprocess.run(case_command(cli, case, run), capture_output=True, text=True,
+                              encoding="utf-8", timeout=run.timeout_s, cwd=run.out_dir)
+    except subprocess.TimeoutExpired:
+        print(f"  timed out after {run.timeout_s}s", file=sys.stderr)
+        return
+    if done.returncode != 0:
+        print(f"  failed: {done.stderr[:200]}", file=sys.stderr)
+        return
+    save_reply(run.out_dir, case, json.loads(done.stdout))
+
+
+def run_cases(prompts: list[dict], run: SimpleNamespace) -> int:
+    """run: out_dir, skill_dir (None for the baseline arm), model, timeout_s."""
+    run.out_dir.mkdir(parents=True, exist_ok=True)
     cli = shutil.which("claude")
 
     if not cli:
@@ -92,45 +138,11 @@ def run_cases(prompts: list[dict], out_dir: Path, skill_dir: Path | None,
         return 2
 
     for case in prompts:
-        target = out_dir / f"{case['id']}.{case['ext']}"
-        prompt = (
-            build_prompt(case, skill_dir)
-            + f"\n\nWrite the complete file. Output ONLY {case['language']} source code, "
-              f"with no markdown fences and no commentary."
-        )
-        # Isolate both arms from the operator's own setup (hooks, plugins, skills, MCP,
-        # project CLAUDE.md) so the only difference between runs is the skill itself.
-        command = [cli, "-p", prompt, "--output-format", "json",
-                   "--setting-sources", "", "--strict-mcp-config",
-                   "--disable-slash-commands", "--allowedTools", "Read,Grep,Glob"]
-        if skill_dir:
-            command += ["--add-dir", str(skill_dir)]
-        if model:
-            command += ["--model", model]
-        print(f"running {case['id']} ...", flush=True)
-        try:
-            done = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
-                                  timeout=timeout_s, cwd=out_dir)
-        except subprocess.TimeoutExpired:
-            print(f"  timed out after {timeout_s}s", file=sys.stderr)
-            continue
-        if done.returncode != 0:
-            print(f"  failed: {done.stderr[:200]}", file=sys.stderr)
-            continue
-        reply = json.loads(done.stdout)
-        (out_dir / f"{case['id']}.usage.json").write_text(json.dumps({
-            key: reply.get(key) for key in
-            ("usage", "total_cost_usd", "num_turns", "duration_ms")
-        }, indent=2), encoding="utf-8")
-        body = reply["result"].strip()
-        if body.startswith("```"):  # strip fences the model may add anyway
-            body = "\n".join(body.split("\n")[1:-1])
-        target.write_text(body, encoding="utf-8")
-        print(f"  wrote {target}")
+        run_case(cli, case, run)
 
-    (out_dir / "_meta.json").write_text(json.dumps({
-        "skill": str(skill_dir) if skill_dir else None,
-        "model": model,
+    (run.out_dir / "_meta.json").write_text(json.dumps({
+        "skill": str(run.skill_dir) if run.skill_dir else None,
+        "model": run.model,
         "cases": [c["id"] for c in prompts],
     }, indent=2), encoding="utf-8")
     return 0
@@ -198,17 +210,27 @@ def write_scorecard(results_dir: Path, scores: list[CaseScore]) -> Path:
     return path
 
 
+def marker(score: CaseScore) -> str:
+    if score.missing:
+        return "  MISSING"
+    return "" if score.clean else "  <-"
+
+
+def report_top_codes(scores: list[CaseScore]) -> None:
+    all_codes: dict[str, int] = {}
+    for s in scores:
+        for code, count in s.by_code.items():
+            all_codes[code] = all_codes.get(code, 0) + count
+    if all_codes:
+        print("  most common findings:", ", ".join(
+            f"{c}×{n}" for c, n in sorted(all_codes.items(), key=lambda kv: -kv[1])[:6]))
+
+
 def report_scores(scores: list[CaseScore], label: str) -> None:
     print(f"\n{label}")
     print(f"  {'case':<26} {'files':>5} {'findings':>9} {'weighted':>9} {'tokens':>8}")
     for s in scores:
-        if s.missing:
-            marker = "  MISSING"
-        elif s.clean:
-            marker = ""
-        else:
-            marker = "  <-"
-        print(f"  {s.case_id:<26} {s.files:>5} {s.findings:>9} {s.weighted:>9} {s.tokens:>8}{marker}")
+        print(f"  {s.case_id:<26} {s.files:>5} {s.findings:>9} {s.weighted:>9} {s.tokens:>8}{marker(s)}")
     clean = sum(1 for s in scores if s.clean)
     scored = [s for s in scores if not s.missing]
     missing = [s for s in scores if s.missing]
@@ -219,14 +241,7 @@ def report_scores(scores: list[CaseScore], label: str) -> None:
         print(f"  !! {len(missing)} case(s) produced NO output and were excluded: "
               f"{', '.join(s.case_id for s in missing)}")
         print("     Comparisons across runs are only valid on cases present in both.")
-
-    all_codes: dict[str, int] = {}
-    for s in scores:
-        for code, count in s.by_code.items():
-            all_codes[code] = all_codes.get(code, 0) + count
-    if all_codes:
-        print("  most common findings:", ", ".join(
-            f"{c}×{n}" for c, n in sorted(all_codes.items(), key=lambda kv: -kv[1])[:6]))
+    report_top_codes(scores)
 
 
 # --------------------------------------------------------------------------------------
@@ -234,16 +249,40 @@ def report_scores(scores: list[CaseScore], label: str) -> None:
 # --------------------------------------------------------------------------------------
 
 
-def compare(before_dir: Path, after_dir: Path) -> int:
-    before = json.loads((before_dir / "scorecard.json").read_text(encoding="utf-8"))
-    after = json.loads((after_dir / "scorecard.json").read_text(encoding="utf-8"))
+def scored_cases(results_dir: Path) -> dict[str, dict]:
+    card = json.loads((results_dir / "scorecard.json").read_text(encoding="utf-8"))
+    return {c["case_id"]: c for c in card["cases"] if c["files"] > 0}
 
+
+def sums(cases: dict[str, dict], shared: list[str], key: str) -> int:
+    return sum(cases[c].get(key, 0) for c in shared)
+
+
+def report_totals(before_cases: dict, after_cases: dict, shared: list[str]) -> None:
+    clean = (sum(1 for c in shared if before_cases[c]["findings"] == 0),
+             sum(1 for c in shared if after_cases[c]["findings"] == 0))
+    print(f"  {'metric':<34} {'before':>8} {'after':>8} {'delta':>8}")
+    for label, key, lower_is_better in [
+        ("total findings", "findings", True),
+        ("weighted severity", "weighted", True),
+        ("cases producing clean code", None, False),
+        ("tokens (in + cache + out)", "tokens", True),
+    ]:
+        b, a = (sums(before_cases, shared, key), sums(after_cases, shared, key)) if key else clean
+        delta = a - b
+        good = (delta < 0) if lower_is_better else (delta > 0)
+        flag = "  better" if delta and good else ("  WORSE" if delta else "")
+        print(f"  {label:<34} {b:>8} {a:>8} {delta:>+8}{flag}")
+    cost = (sums(before_cases, shared, "cost_usd"), sums(after_cases, shared, "cost_usd"))
+    print(f"  {'cost (USD)':<34} {cost[0]:>8.2f} {cost[1]:>8.2f} {cost[1] - cost[0]:>+8.2f}")
+
+
+def compare(before_dir: Path, after_dir: Path) -> int:
     print(f"\nCOMPARISON  {before_dir.name} -> {after_dir.name}\n")
 
     # Only cases scored in BOTH runs are comparable. Aggregates over different case
     # sets are meaningless, and would flatter whichever run produced fewer outputs.
-    before_cases = {c["case_id"]: c for c in before["cases"] if c["files"] > 0}
-    after_cases = {c["case_id"]: c for c in after["cases"] if c["files"] > 0}
+    before_cases, after_cases = scored_cases(before_dir), scored_cases(after_dir)
     shared = sorted(set(before_cases) & set(after_cases))
     dropped = sorted((set(before_cases) | set(after_cases)) - set(shared))
     if dropped:
@@ -252,33 +291,7 @@ def compare(before_dir: Path, after_dir: Path) -> int:
         print("  No cases scored in both runs — nothing to compare.")
         return 2
     print(f"  Comparing {len(shared)} case(s) present in both runs.\n")
-
-    totals = {
-        "total_findings": (sum(before_cases[c]["findings"] for c in shared),
-                           sum(after_cases[c]["findings"] for c in shared)),
-        "total_weighted": (sum(before_cases[c]["weighted"] for c in shared),
-                           sum(after_cases[c]["weighted"] for c in shared)),
-        "cases_clean": (sum(1 for c in shared if before_cases[c]["findings"] == 0),
-                        sum(1 for c in shared if after_cases[c]["findings"] == 0)),
-        "tokens": (sum(before_cases[c].get("tokens", 0) for c in shared),
-                   sum(after_cases[c].get("tokens", 0) for c in shared)),
-    }
-    cost = (sum(before_cases[c].get("cost_usd", 0) for c in shared),
-            sum(after_cases[c].get("cost_usd", 0) for c in shared))
-
-    print(f"  {'metric':<34} {'before':>8} {'after':>8} {'delta':>8}")
-    for label, key, lower_is_better in [
-        ("total findings", "total_findings", True),
-        ("weighted severity", "total_weighted", True),
-        ("cases producing clean code", "cases_clean", False),
-        ("tokens (in + cache + out)", "tokens", True),
-    ]:
-        b, a = totals[key]
-        delta = a - b
-        good = (delta < 0) if lower_is_better else (delta > 0)
-        flag = "  better" if delta and good else ("  WORSE" if delta else "")
-        print(f"  {label:<34} {b:>8} {a:>8} {delta:>+8}{flag}")
-    print(f"  {'cost (USD)':<34} {cost[0]:>8.2f} {cost[1]:>8.2f} {cost[1] - cost[0]:>+8.2f}")
+    report_totals(before_cases, after_cases, shared)
 
     regressions = [after_cases[c] for c in shared
                    if after_cases[c]["weighted"] > before_cases[c]["weighted"]]
@@ -299,8 +312,7 @@ def compare(before_dir: Path, after_dir: Path) -> int:
 # --------------------------------------------------------------------------------------
 
 
-def main(argv: list[str] | None = None) -> int:
-    sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp1252
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -322,28 +334,33 @@ def main(argv: list[str] | None = None) -> int:
     p_cmp = sub.add_parser("compare", help="Compare two scorecards")
     p_cmp.add_argument("before_dir")
     p_cmp.add_argument("after_dir")
+    return parser
 
-    cfg = parser.parse_args(argv)
 
+def cmd_score(cfg: argparse.Namespace) -> int:
+    prompts = load_prompts(Path(cfg.prompts))
+    linter = Path(cfg.linter) if cfg.linter else \
+        Path(__file__).resolve().parent / "evals" / "lint.py"
+    if not linter.exists():
+        print(f"Linter not found: {linter}", file=sys.stderr)
+        return 2
+    results_dir = Path(cfg.results_dir)
+    scores = score_dir(results_dir, prompts, linter)
+    report_scores(scores, f"SCORECARD  {results_dir}")
+    path = write_scorecard(results_dir, scores)
+    print(f"\n  wrote {path}")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp1252
+    cfg = build_parser().parse_args(argv)
     if cfg.command == "run":
-        prompts = load_prompts(Path(cfg.prompts))
         skill = None if cfg.no_skill else Path(cfg.skill).resolve()
-        return run_cases(prompts, Path(cfg.out), skill, cfg.model, cfg.timeout)
-
+        run = SimpleNamespace(out_dir=Path(cfg.out), skill_dir=skill, model=cfg.model, timeout_s=cfg.timeout)
+        return run_cases(load_prompts(Path(cfg.prompts)), run)
     if cfg.command == "score":
-        prompts = load_prompts(Path(cfg.prompts))
-        linter = Path(cfg.linter) if cfg.linter else \
-            Path(__file__).resolve().parent / "evals" / "lint.py"
-        if not linter.exists():
-            print(f"Linter not found: {linter}", file=sys.stderr)
-            return 2
-        results_dir = Path(cfg.results_dir)
-        scores = score_dir(results_dir, prompts, linter)
-        report_scores(scores, f"SCORECARD  {results_dir}")
-        path = write_scorecard(results_dir, scores)
-        print(f"\n  wrote {path}")
-        return 0
-
+        return cmd_score(cfg)
     return compare(Path(cfg.before_dir), Path(cfg.after_dir))
 
 
