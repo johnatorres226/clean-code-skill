@@ -64,7 +64,7 @@ An agent's comment names its role in brackets on its first line; an untagged com
 ## Roadmap
 
 **Layer**:
-One stage of the agent's working loop that this plugin governs, such as code review or intake.
+One stage of the agent's working loop that this plugin governs, such as code review or release.
 _Avoid_: phase, milestone, module
 
 ## Work tracking

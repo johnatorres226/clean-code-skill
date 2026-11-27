@@ -34,10 +34,10 @@ human_paths = ["docs/adr/", "GLOSSARY.md", "**/CLAUDE.md"]  # decisions, vocabul
 exclude = ["*.lock", "*-lock.json", "results/*", "tools/evals/benchmarks/*", "tools/evals/review/*", "docs/research/*"]
 
 [gates]
-format    = ""
-lint      = "python tools/skill_audit.py skills/clean-code --fail-on-violation"
-typecheck = "python -m compileall -q skills tools tests"
-test      = "python tests/test_standards.py && python tests/test_regress.py && python tools/regress.py static"
+format    = "uv run ruff format --check ."
+lint      = "uv run ruff check . && uv run python tools/skill_audit.py skills/clean-code --fail-on-violation"
+typecheck = "uv run python -m compileall -q skills tools tests"
+test      = "uv run python tests/test_standards.py && uv run python tests/test_regress.py && uv run python tools/regress.py static"
 
 [release]
 approval = "tiered"                    # team tool: a senior approves releases that hit a human-review

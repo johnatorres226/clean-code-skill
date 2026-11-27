@@ -6,7 +6,8 @@ Roadmap and current layer: `docs/ROADMAP.md`.
 
 Issues live in GitHub Issues for johnatorres226/clean-code-skill (via `gh`). See `docs/agents/issue-tracker.md`.
 Hand ticket mechanics (create, label, link, next ticket, map index) to the `tracker` agent
-(`agents/tracker.md`) instead of running `gh` yourself; comments and closing stay with you.
+(`agents/tracker.md`) instead of running `gh` yourself; comments stay with you. Ask it to clean up after
+a release (merged branches, released tickets).
 
 ### Triage labels
 
@@ -25,5 +26,6 @@ This repo adopts its own plugin. Rules: `standards.toml`; hooks live in
 - Done = `python skills/setup-standards/templates/.githooks/standards.py check` green.
 - Code: one job per function (≤ 20 lines, ≤ 3 params, no boolean-flag params, nesting ≤ 2),
   named constants instead of magic numbers, comments only for *why*. Full procedure: skill `clean-code`.
+- `uv sync` once; the gates run through `uv run` (ruff's limits in `pyproject.toml`).
 - Maintainer tools: `tools/skill_audit.py`, `tools/skill_eval.py`, `tools/review_eval.py` (local
   only, paid), `tests/test_standards.py`.

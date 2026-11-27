@@ -81,11 +81,11 @@ Review passes adapted from Cursor's Thermos and pstack plugins (MIT); credited i
 Three independent measurements, each A/B against a no-standards control, plus a regression gate.
 
 ```bash
-pip install -r tools/evals/requirements.txt                     # eval-only deps (radon, ruff, ...)
-python tools/bench.py all --variant NAME [--claude-md FILE]       # agent benchmark, resumable
-python tools/skill_eval.py run --skill skills/clean-code --out results/lint/x   # code-quality eval
-python tools/regress.py static          # every PR (CI): token cost, SkillEvaluator score, self-checks
-python tools/regress.py bench NAME      # before release: agent tier vs tools/evals/baseline.json
+uv sync                                                         # maintainer deps (ruff, radon, ...), locked in uv.lock
+uv run python tools/bench.py all --variant NAME [--claude-md FILE]       # agent benchmark, resumable
+uv run python tools/skill_eval.py run --skill skills/clean-code --out results/lint/x   # code-quality eval
+uv run python tools/regress.py static          # every PR (CI): token cost, SkillEvaluator score, self-checks
+uv run python tools/regress.py bench NAME      # before release: agent tier vs tools/evals/baseline.json
 ```
 
 **Methods.** Agent benchmark: 32 Exercism tasks (24 never used for tuning), 1 run per task per

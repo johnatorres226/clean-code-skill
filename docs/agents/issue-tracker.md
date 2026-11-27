@@ -44,3 +44,40 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 - **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
 - **Claim**: `gh issue edit <n> --add-assignee @me`, the session's first write.
 - **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
+
+## Cleanup operations
+
+Used by the `tracker` agent's clean-up brief. Run `git fetch -q --prune origin` first. The protected
+branches come from `[branches].protected` in `standards.toml`.
+
+- **Merged branches**: delete a branch only while its tip is still the commit its merged PR ended
+  on, so later work under a reused name survives. Never a protected branch.
+
+  ```bash
+  gh pr list --state merged --limit 200 --json headRefName,headRefOid --jq '.[] | "\(.headRefName) \(.headRefOid)"' |
+  while read b sha; do
+    case " main dev " in *" $b "*) continue;; esac   # protected branches
+    [ "$(git rev-parse -q --verify "origin/$b")" = "$sha" ] &&
+      gh api -X DELETE "repos/{owner}/{repo}/git/refs/heads/$b" >/dev/null && echo "deleted origin/$b"
+    git rev-parse -q --verify "refs/heads/$b" >/dev/null && [ "$(git rev-list --count "$sha..$b" 2>/dev/null)" = 0 ] &&
+      git branch -D "$b" >/dev/null 2>&1 && echo "deleted $b"
+  done
+  ```
+
+  A local branch that is checked out, in a worktree or ahead of its PR stays; report it.
+- **Released tickets**: GitHub closes a ticket from `Closes #n` only when the PR merges into the
+  default branch, and ticket PRs merge into `dev`. Close each ticket whose closing PR has reached
+  `main`:
+
+  ```bash
+  gh pr list --state merged --base dev --limit 200 --json mergeCommit,body --jq '.[] | select(.body | test("(?i)(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+")) | "\(.mergeCommit.oid) \([.body | scan("(?i)(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?) #([0-9]+)")[]] | join(" "))"' |
+  while read oid tickets; do
+    git merge-base --is-ancestor "$oid" origin/main || continue
+    for n in $tickets; do
+      [ "$(gh issue view "$n" --json state -q .state)" = OPEN ] && gh issue close "$n" --reason completed && echo "closed #$n"
+    done
+  done
+  ```
+- **Idle**: open tickets with no activity in N days, `gh issue list --state open --search "updated:<YYYY-MM-DD"`;
+  remote branches with no PR and no commit in N days, `git for-each-ref --sort=committerdate refs/remotes/origin --format='%(committerdate:short) %(refname:lstrip=3)'`.
+  Report these; change nothing.
