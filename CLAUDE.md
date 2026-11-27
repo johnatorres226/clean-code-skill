@@ -6,7 +6,8 @@ Roadmap and current layer: `docs/ROADMAP.md`.
 
 Issues live in GitHub Issues for johnatorres226/clean-code-skill (via `gh`). See `docs/agents/issue-tracker.md`.
 Hand ticket mechanics (create, label, link, next ticket, map index) to the `tracker` agent
-(`agents/tracker.md`) instead of running `gh` yourself; comments and closing stay with you.
+(`agents/tracker.md`) instead of running `gh` yourself; comments stay with you. Ask it to clean up after
+a release (merged branches, released tickets).
 
 ### Triage labels
 
