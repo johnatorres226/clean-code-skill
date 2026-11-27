@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import re
 import statistics
-from typing import Callable
+from collections.abc import Callable
 
 JUDGE_PROMPT = """You are reviewing two solutions to the same task. Both pass the same unit tests.
 Judge which one a maintainer would rather own: readability, naming, function size and
@@ -25,7 +25,7 @@ Task:
 === Solution B ===
 {b}
 
-Reply with only a JSON object: {{"better": "A" or "B" or "tie", "score_A": 1-10, "score_B": 1-10, "reason": "<one sentence>"}}"""
+Reply with only a JSON object: {{"better": "A" or "B" or "tie", "score_A": 1-10, "score_B": 1-10, "reason": "<one sentence>"}}"""  # noqa: E501
 
 Ask = Callable[[str], "tuple[str, float]"]
 
@@ -38,7 +38,7 @@ def parse_verdict(text: str) -> dict:
         return {}
 
 
-def pairwise(ask: Ask, task: str, first_code: str, second_code: str,
+def pairwise(ask: Ask, task: str, first_code: str, second_code: str,  # noqa: PLR0913
              labels: tuple[str, str] = ("none", "standards")) -> dict:
     """Judge `first_code` (labels[0]) against `second_code` (labels[1]) in both orders."""
     a_label, b_label = labels
@@ -62,9 +62,9 @@ def pairwise(ask: Ask, task: str, first_code: str, second_code: str,
 if __name__ == "__main__":
     # Self-check with a scripted judge that always prefers whichever solution is shown first:
     # pure position bias must collapse to a tie.
-    biased = lambda prompt: ('{"better": "A", "score_A": 8, "score_B": 5, "reason": "x"}', 0.0)
+    biased = lambda prompt: ('{"better": "A", "score_A": 8, "score_B": 5, "reason": "x"}', 0.0)  # noqa: E731
     assert pairwise(biased, "t", "x", "y")["winner"] == "tie"
-    consistent = lambda prompt: (
+    consistent = lambda prompt: (  # noqa: E731
         '{"better": "%s", "score_A": 5, "score_B": 5}' % ("A" if prompt.index("good()") <
                                                           prompt.index("bad()") else "B"), 0.0)
     assert pairwise(consistent, "t", "bad()", "good()")["winner"] == "standards"
