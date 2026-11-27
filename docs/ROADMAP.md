@@ -65,8 +65,9 @@ Grounded in `docs/research/code-review.md`, ADR 0002 and ADR 0003.
 - Release rules: proof that every commit came through a checked ticket PR, the release-only check
   list, and the release approval setting.
 - Validation (`tools/review_eval.py`, 18 synthetic cases) gates on one-way-door recall, clean PRs
-  blocked and adversarial escapes. Opus is the production reviewer; Haiku also passes, with no
-  margin on clean PRs blocked. Reverts per tier need real PR history.
+  blocked and adversarial escapes. Sonnet is the production reviewer: it matches Opus on every
+  metric at 73% of the cost. Haiku passes with no margin on clean PRs blocked, and on a real PR it
+  lowered the tier floor. Reverts per tier need real PR history.
 
 ## Frameworks we compose with
 
