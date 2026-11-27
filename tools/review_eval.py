@@ -31,7 +31,7 @@ from bench import ROOT, TEMPLATES, UsageLimit, fresh_dir, git_init, run_claude, 
 
 CASES = ROOT / "tools" / "evals" / "review"
 KINDS = ["clean", "defects", "one_way", "adversarial"]
-DEFAULT_MODEL = "claude-opus-5-5"  # the production reviewer; run claude-haiku-5-5 once as a baseline
+DEFAULT_MODEL = "claude-sonnet-5-5"  # the production reviewer (agents/reviewer.md); opus and haiku are baselines
 REVISE_ROUNDS = 5
 DEFECT_WINDOW = 3                  # a finding cites the seeded line within this many lines
 MAX_CLEAN_BLOCK_RATE = 0.2
