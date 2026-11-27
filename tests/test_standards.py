@@ -6,6 +6,8 @@ import sys
 import tempfile
 import tomllib
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 TEMPLATES = Path(__file__).resolve().parent.parent / "skills" / "setup-standards" / "templates"
 sys.path.insert(0, str(TEMPLATES / ".githooks"))
@@ -64,26 +66,36 @@ def test_guard():
     assert s.guard_problem('bash -c "git commit -m \'docs: explain --no-verify policy\'"', CFG) is None
 
 
-def test_codeowners_and_ruleset():
+def test_codeowners():
     owners = s.codeowners(CFG).splitlines()
     assert "/standards.toml @org/seniors" in owners  # guarded
     assert "/tests/acceptance/ @org/seniors" in owners  # holdout
     assert "**/migrations/** @org/seniors" in owners  # human path; globs stay unanchored
     assert not any(o.startswith(("* ", "/src/")) for o in owners)  # agent-merge paths: no owner
-    dev = {r["type"]: r.get("parameters", {}) for r in s.ruleset("dev", CFG)["rules"]}
-    main = {r["type"]: r.get("parameters", {}) for r in s.ruleset("main", CFG)["rules"]}
+
+
+def rules(branch: str, cfg: dict) -> dict:
+    return {r["type"]: r.get("parameters", {}) for r in s.ruleset(branch, cfg)["rules"]}
+
+
+def test_ruleset_merge_methods():
+    dev, main = rules("dev", CFG), rules("main", CFG)
     assert "required_linear_history" in dev and "required_linear_history" not in main
     assert dev["pull_request"]["allowed_merge_methods"] == ["rebase"]
     assert main["pull_request"]["allowed_merge_methods"] == ["merge"]  # release keeps a merge commit
+    assert dev["required_status_checks"]["strict_required_status_checks_policy"]
+    # release: main's merge commits never reach a linear dev, so "up to date" would block every release
+    assert not main["required_status_checks"]["strict_required_status_checks_policy"]
+
+
+def test_ruleset_reviews_and_checks():
+    dev = rules("dev", CFG)
     pr = dev["pull_request"]
     assert pr["require_code_owner_review"] and pr["dismiss_stale_reviews_on_push"]
     assert pr["required_review_thread_resolution"]
     assert not pr["require_last_push_approval"]  # reviews_required = 0: it would block agent paths
     strict = {**CFG, "pr": {**CFG["pr"], "reviews_required": 1}}
     assert s.ruleset("dev", strict)["rules"][2]["parameters"]["require_last_push_approval"]
-    assert dev["required_status_checks"]["strict_required_status_checks_policy"]
-    # release: main's merge commits never reach a linear dev, so "up to date" would block every release
-    assert not main["required_status_checks"]["strict_required_status_checks_policy"]
     contexts = [c["context"] for c in dev["required_status_checks"]["required_status_checks"]]
     assert contexts == ["standards", "tier"]  # tier: human review waits for a senior (ADR 0002)
     reviewed = {**CFG, "review": {"check": "verdict", "app_id": 42}}
@@ -200,48 +212,65 @@ def isolated_env() -> dict:
     return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")} | {"GIT_CONFIG_NOSYSTEM": "1"}
 
 
+def throwaway_repo(tmp: str) -> SimpleNamespace:
+    """`run` runs a command in the repo; `std` runs the standards hook there."""
+    env = isolated_env()
+
+    def run(*args, stdin=None):
+        return subprocess.run(args, cwd=tmp, input=stdin, capture_output=True, text=True, env=env)
+
+    def std(*args, stdin=None):
+        return run(sys.executable, str(TEMPLATES / ".githooks" / "standards.py"), *args, stdin=stdin)
+
+    return SimpleNamespace(path=Path(tmp), run=run, std=std)
+
+
+def init_on_main(repo: SimpleNamespace) -> None:
+    repo.run("git", "init", "-q", "-b", "main")
+    repo.run("git", "config", "user.email", "t@example.com")
+    repo.run("git", "config", "user.name", "t")
+    (repo.path / "standards.toml").write_text(
+        (TEMPLATES / "standards.toml").read_text(encoding="utf-8"), encoding="utf-8")
+    repo.run("git", "add", "-A")
+    assert repo.std("staged").returncode == 1, "commit on main must be blocked"
+    repo.run("git", "commit", "-q", "-m", "chore: init")
+
+
+def ticket_flow(repo: SimpleNamespace) -> None:
+    repo.run("git", "checkout", "-q", "-b", "wip")
+    assert repo.std("staged").returncode == 1, "commit on a misnamed branch must be blocked"
+    repo.run("git", "checkout", "-q", "-b", "feat/x")
+    (repo.path / "a.txt").write_text("hello ←\n", encoding="utf-8")  # byte 0x90: cp1252 cannot decode it
+    repo.run("git", "add", "-A")
+    assert repo.std("staged").returncode == 0
+    msg = repo.path / "MSG"
+    msg.write_text("wip", encoding="utf-8")
+    assert repo.std("commit-msg", str(msg)).returncode == 1
+    repo.run("git", "commit", "-q", "-m", "feat: add greeting")
+    assert repo.std("range", "main").returncode == 0
+    assert "tier: agent-merge" in repo.std("tier", "main").stdout
+    assert repo.std("pre-push", stdin="refs/heads/feat/x abc refs/heads/main def\n").returncode == 1
+    guard = repo.std("guard", stdin=json.dumps({"tool_input": {"command": "git push origin dev"}}))
+    assert guard.returncode == s.BLOCK
+
+
+def release_flow(repo: SimpleNamespace) -> None:
+    """dev -> main: an old oversized commit on dev does not block it."""
+    repo.run("git", "checkout", "-q", "-b", "dev")
+    (repo.path / "big.txt").write_text("x\n" * 400, encoding="utf-8")
+    repo.run("git", "add", "-A")
+    repo.run("git", "commit", "-q", "-m", "feat: bootstrap")
+    assert repo.std("range", "main", "--branch", "feat/y").returncode == 1, "a ticket PR still checks commit size"
+    assert repo.std("range", "main", "--branch", "dev").returncode == 0
+
+
 def test_hooks_end_to_end():
     """Real git repo: protected-branch commit and bad message are blocked; good flow passes."""
-    env = isolated_env()
     with tempfile.TemporaryDirectory() as tmp:
-        def run(*args, stdin=None):
-            return subprocess.run(args, cwd=tmp, input=stdin, capture_output=True, text=True, env=env)
-
-        def std(*args, stdin=None):
-            return run(sys.executable, str(TEMPLATES / ".githooks" / "standards.py"), *args, stdin=stdin)
-
-        run("git", "init", "-q", "-b", "main")
-        run("git", "config", "user.email", "t@example.com")
-        run("git", "config", "user.name", "t")
-        (Path(tmp) / "standards.toml").write_text(
-            (TEMPLATES / "standards.toml").read_text(encoding="utf-8"), encoding="utf-8")
-        run("git", "add", "-A")
-        assert std("staged").returncode == 1, "commit on main must be blocked"
-
-        run("git", "commit", "-q", "-m", "chore: init")
-        run("git", "checkout", "-q", "-b", "wip")
-        assert std("staged").returncode == 1, "commit on a misnamed branch must be blocked"
-        run("git", "checkout", "-q", "-b", "feat/x")
-        (Path(tmp) / "a.txt").write_text("hello ←\n", encoding="utf-8")  # byte 0x90: cp1252 cannot decode it
-        run("git", "add", "-A")
-        assert std("staged").returncode == 0
-        msg = Path(tmp) / "MSG"
-        msg.write_text("wip", encoding="utf-8")
-        assert std("commit-msg", str(msg)).returncode == 1
-        run("git", "commit", "-q", "-m", "feat: add greeting")
-        assert std("range", "main").returncode == 0
-        assert "tier: agent-merge" in std("tier", "main").stdout
-        assert std("pre-push", stdin="refs/heads/feat/x abc refs/heads/main def\n").returncode == 1
-        guard = std("guard", stdin=json.dumps({"tool_input": {"command": "git push origin dev"}}))
-        assert guard.returncode == 2
-
-        # release dev -> main: an old oversized commit on dev does not block it
-        run("git", "checkout", "-q", "-b", "dev")
-        (Path(tmp) / "big.txt").write_text("x\n" * 400, encoding="utf-8")
-        run("git", "add", "-A")
-        run("git", "commit", "-q", "-m", "feat: bootstrap")
-        assert std("range", "main", "--branch", "feat/y").returncode == 1, "a ticket PR still checks commit size"
-        assert std("range", "main", "--branch", "dev").returncode == 0
+        repo = throwaway_repo(tmp)
+        init_on_main(repo)
+        ticket_flow(repo)
+        release_flow(repo)
 
 
 def test_end_to_end_ignores_hook_git_dir():
@@ -250,14 +279,8 @@ def test_end_to_end_ignores_hook_git_dir():
         subprocess.run(["git", "init", "-q", decoy], capture_output=True, env=isolated_env())
         config = Path(decoy) / ".git" / "config"
         before = config.read_bytes()
-        hook_git_dir = os.environ.get("GIT_DIR")
-        os.environ["GIT_DIR"] = str(Path(decoy) / ".git")
-        try:
+        with mock.patch.dict(os.environ, {"GIT_DIR": str(Path(decoy) / ".git")}):
             test_hooks_end_to_end()
-        finally:
-            os.environ.pop("GIT_DIR")
-            if hook_git_dir is not None:
-                os.environ["GIT_DIR"] = hook_git_dir
         assert config.read_bytes() == before, "end-to-end test wrote into the hook's repo"
 
 
