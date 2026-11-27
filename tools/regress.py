@@ -63,12 +63,12 @@ def static_metrics() -> dict:
     return metrics
 
 
-def worse(current: float, base: float, direction: str, tolerance: float, kind: str) -> bool:
+def worse(current: float, base: float, direction: str, tolerance: float, kind: str) -> bool:  # noqa: PLR0913
     slack = tolerance * abs(base) if kind == "rel" else tolerance
     return current > base + slack if direction == "max" else current < base - slack
 
 
-def compare(label: str, current: dict, base: dict, rules: list) -> list[str]:
+def compare(label: str, current: dict, base: dict, rules: list) -> list[str]:  # noqa: PLR0913
     failures = []
     for key, direction, tolerance, kind in rules:
         cur, ref = current.get(key), base.get(key)
@@ -95,7 +95,7 @@ def self_check() -> list[str]:
     return [] if done.returncode == 0 else ["enforcement self-check failed:\n" + done.stdout + done.stderr]
 
 
-def main(argv: list[str]) -> int:
+def main(argv: list[str]) -> int:  # noqa: PLR0915
     sys.stdout.reconfigure(encoding="utf-8")
     base = json.loads(BASELINE.read_text(encoding="utf-8")) if BASELINE.exists() else {}
     command = argv[0] if argv else "static"

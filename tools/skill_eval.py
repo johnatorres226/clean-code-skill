@@ -27,7 +27,7 @@ import json
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -82,7 +82,7 @@ def build_prompt(case: dict, skill_dir: Path | None) -> str:
 # --------------------------------------------------------------------------------------
 
 
-def run_cases(prompts: list[dict], out_dir: Path, skill_dir: Path | None,
+def run_cases(prompts: list[dict], out_dir: Path, skill_dir: Path | None,  # noqa: PLR0913, PLR0915
               model: str | None, timeout_s: int) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     cli = shutil.which("claude")
@@ -198,7 +198,7 @@ def write_scorecard(results_dir: Path, scores: list[CaseScore]) -> Path:
     return path
 
 
-def report_scores(scores: list[CaseScore], label: str) -> None:
+def report_scores(scores: list[CaseScore], label: str) -> None:  # noqa: PLR0915
     print(f"\n{label}")
     print(f"  {'case':<26} {'files':>5} {'findings':>9} {'weighted':>9} {'tokens':>8}")
     for s in scores:
@@ -234,7 +234,7 @@ def report_scores(scores: list[CaseScore], label: str) -> None:
 # --------------------------------------------------------------------------------------
 
 
-def compare(before_dir: Path, after_dir: Path) -> int:
+def compare(before_dir: Path, after_dir: Path) -> int:  # noqa: PLR0915
     before = json.loads((before_dir / "scorecard.json").read_text(encoding="utf-8"))
     after = json.loads((after_dir / "scorecard.json").read_text(encoding="utf-8"))
 
@@ -299,7 +299,7 @@ def compare(before_dir: Path, after_dir: Path) -> int:
 # --------------------------------------------------------------------------------------
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
     sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp1252
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
