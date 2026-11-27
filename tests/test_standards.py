@@ -14,6 +14,7 @@ sys.path.insert(0, str(TEMPLATES / ".githooks"))
 import standards as s  # noqa: E402
 
 CFG = tomllib.loads((TEMPLATES / "standards.toml").read_text(encoding="utf-8"))
+HARNESS_BLOCK = 2  # the agent harness contract: a hook exiting 2 blocks the tool call
 
 
 def test_commit_messages():
@@ -251,7 +252,7 @@ def ticket_flow(repo: SimpleNamespace) -> None:
     assert "tier: agent-merge" in repo.std("tier", "main").stdout
     assert repo.std("pre-push", stdin="refs/heads/feat/x abc refs/heads/main def\n").returncode == 1
     guard = repo.std("guard", stdin=json.dumps({"tool_input": {"command": "git push origin dev"}}))
-    assert guard.returncode == s.BLOCK
+    assert guard.returncode == HARNESS_BLOCK
 
 
 def release_flow(repo: SimpleNamespace) -> None:
