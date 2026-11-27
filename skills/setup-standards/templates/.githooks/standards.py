@@ -1,26 +1,27 @@
 #!/usr/bin/env python3
 """Enforce the repo's standards.toml. Stdlib only; one file so it can be vendored into .githooks/.
 
-  check [--fast]       run the gates (fast: format + lint only)
-  staged               pre-commit: block commits on protected or misnamed branches, oversized
-                       commits; run the fast gates
-  commit-msg FILE      commit-msg: Conventional Commit format
-  pre-push             pre-push: block pushes to protected branches, bad branch names; run check
-  range BASE [--no-size] [--branch NAME] [--body-file F]
-                       CI: every commit in BASE..HEAD passes message + size; the PR is within
-                       limit, its branch is <type>/<slug>, it does not mix holdout tests with
-                       code, and its body links a ticket. A protected head (a release) skips
-                       the PR rules: it is a promotion (docs/adr/0003)
-  tier BASE [--pr N] [--branch NAME]
-                       lowest review tier BASE...HEAD may take (docs/adr/0002), with the
-                       human-review triggers that set it; with --pr, human review fails until
-                       a senior approves the head commit. A release takes [release].approval
-  release BASE         CI, release PRs: every commit came through a merged PR whose review
-                       checks passed, then the [release.gates] run
-  guard                Claude Code PreToolUse hook: block bypasses of the above (exit 2)
-  codeowners           print CODEOWNERS from [roles]
-  ruleset BRANCH       print the GitHub ruleset JSON for a protected branch
+check [--fast]       run the gates (fast: format + lint only)
+staged               pre-commit: block commits on protected or misnamed branches, oversized
+                     commits; run the fast gates
+commit-msg FILE      commit-msg: Conventional Commit format
+pre-push             pre-push: block pushes to protected branches, bad branch names; run check
+range BASE [--no-size] [--branch NAME] [--body-file F]
+                     CI: every commit in BASE..HEAD passes message + size; the PR is within
+                     limit, its branch is <type>/<slug>, it does not mix holdout tests with
+                     code, and its body links a ticket. A protected head (a release) skips
+                     the PR rules: it is a promotion (docs/adr/0003)
+tier BASE [--pr N] [--branch NAME]
+                     lowest review tier BASE...HEAD may take (docs/adr/0002), with the
+                     human-review triggers that set it; with --pr, human review fails until
+                     a senior approves the head commit. A release takes [release].approval
+release BASE         CI, release PRs: every commit came through a merged PR whose review
+                     checks passed, then the [release.gates] run
+guard                Claude Code PreToolUse hook: block bypasses of the above (exit 2)
+codeowners           print CODEOWNERS from [roles]
+ruleset BRANCH       print the GitHub ruleset JSON for a protected branch
 """
+
 from __future__ import annotations
 
 import fnmatch
@@ -42,8 +43,9 @@ ALWAYS_ALLOWED_MSG = re.compile(r"^(Merge |Revert |fixup! |squash! |amend! )")
 
 def git(*args: str) -> str:
     # git output is UTF-8; the locale default (cp1252 on Windows) crashes on it
-    return subprocess.run(["git", *args], capture_output=True, encoding="utf-8", errors="replace",
-                          check=True).stdout.strip()
+    return subprocess.run(
+        ["git", *args], capture_output=True, encoding="utf-8", errors="replace", check=True
+    ).stdout.strip()
 
 
 def load() -> dict | None:
@@ -178,17 +180,22 @@ def is_release(branch: str | None, cfg: dict) -> bool:
 
 def pr_problem(cfg: dict, base: str, opts: dict) -> str | None:
     files = git("diff", "--name-only", f"{base}...HEAD").split()
-    return (opts["branch"] and head_problem(opts["branch"], cfg)) or holdout_problem(files, cfg) \
-        or link_problem(opts["body"], cfg) \
-        or (opts["size"] and size_problem(git("diff", "--numstat", f"{base}...HEAD"), cfg, "pr")) or None
+    return (
+        (opts["branch"] and head_problem(opts["branch"], cfg))
+        or holdout_problem(files, cfg)
+        or link_problem(opts["body"], cfg)
+        or (opts["size"] and size_problem(git("diff", "--numstat", f"{base}...HEAD"), cfg, "pr"))
+        or None
+    )
 
 
 def cmd_range(cfg: dict, base: str, opts: dict) -> int:
     if is_release(opts["branch"], cfg):
         return 0  # every commit passed these rules in its ticket PR; `release` checks that
     for sha in git("rev-list", "--no-merges", f"{base}..HEAD").split():
-        problem = message_problem(git("log", "-1", "--format=%B", sha), cfg) \
-            or (opts["size"] and size_problem(git("show", "--numstat", "--format=", sha), cfg))
+        problem = message_problem(git("log", "-1", "--format=%B", sha), cfg) or (
+            opts["size"] and size_problem(git("show", "--numstat", "--format=", sha), cfg)
+        )
         if problem:
             return fail(f"commit {sha[:8]}: {problem}")
     problem = pr_problem(cfg, base, opts)
@@ -290,8 +297,9 @@ def approval_problem(pr: str, cfg: dict) -> str | None:
     reviews = gh_api(f"repos/{{owner}}/{{repo}}/pulls/{pr}/reviews?per_page=100") or []
     if head and any(is_senior(user, cfg) for user in latest_approvers(reviews, head)):
         return None
-    return "human review: a senior must approve the head commit " \
-        "(team seniors need a workflow token that can read the org)"
+    return (
+        "human review: a senior must approve the head commit (team seniors need a workflow token that can read the org)"
+    )
 
 
 TIER_CHECK = "tier"  # the CI job that runs `tier --pr`; a required check on protected branches
@@ -351,15 +359,18 @@ def segments(command: str):
 def hooks_bypass(words: list[str]) -> bool:
     # Pointing core.hooksPath at the standards hooks (setup) is fine; any other use skips them.
     command, value = words[:3], words[3:]
-    setup = command == ["git", "config", "core.hooksPath"] and len(value) == 1 \
+    setup = (
+        command == ["git", "config", "core.hooksPath"]
+        and len(value) == 1
         and value[0].rstrip("/").endswith(".githooks")
+    )
     return not setup and any("core.hooksPath" in w for w in words)
 
 
 def push_problem(words: list[str], cfg: dict) -> str | None:
     if "push" not in words:
         return None
-    targets = [w.split(":")[-1].removeprefix("refs/heads/") for w in words[words.index("push") + 1:]]
+    targets = [w.split(":")[-1].removeprefix("refs/heads/") for w in words[words.index("push") + 1 :]]
     hit = [t for t in targets if t in cfg["branches"]["protected"]]
     return f"push to protected branch '{hit[0]}' — open a PR (skill: ship)" if hit else None
 
@@ -370,8 +381,8 @@ def guard_problem(command: str, cfg: dict) -> str | None:
             return "overriding core.hooksPath skips the standards hooks; fix the failure instead"
         if "git" not in words:
             continue
-        after = words[words.index("commit") + 1:] if "commit" in words else []
-        commit_flags = after[:next((i for i, w in enumerate(after) if w in SHELL_OPS), len(after))]
+        after = words[words.index("commit") + 1 :] if "commit" in words else []
+        commit_flags = after[: next((i for i, w in enumerate(after) if w in SHELL_OPS), len(after))]
         if "--no-verify" in words or any(re.fullmatch(r"-[a-zA-Z]*n[a-zA-Z]*", w) for w in commit_flags):
             return "--no-verify bypasses the standards hooks; fix the failure instead"
         if problem := push_problem(words, cfg):
@@ -392,8 +403,9 @@ def codeowners(cfg: dict) -> str:
     """Seniors own the human-review paths (docs/adr/0002) and nothing else, so code-owner review
     gates only those. Content triggers cannot be expressed here; the `tier` check carries them."""
     seniors = " ".join(cfg["roles"]["senior"])
-    paths = cfg.get("review", {}).get("human_paths", []) + cfg["roles"]["guarded"] \
-        + cfg.get("tests", {}).get("holdout", [])
+    paths = (
+        cfg.get("review", {}).get("human_paths", []) + cfg["roles"]["guarded"] + cfg.get("tests", {}).get("holdout", [])
+    )
     lines = [f"{p if '*' in p else '/' + p} {seniors}" for p in paths]
     return "\n".join(["# Generated by `standards.py codeowners` from standards.toml.", *lines, ""])
 
@@ -415,27 +427,43 @@ def branch_rules(branch: str, cfg: dict) -> list[dict]:
     integration branch) can never take release merges back and must not be asked to be up to date."""
     integration = branch == cfg["branches"]["integration"]
     method = cfg["branches"]["merge"] if integration else "merge"
-    rules = [{"type": "deletion"}, {"type": "non_fast_forward"},
-             {"type": "pull_request", "parameters": {
-                 "required_approving_review_count": cfg["pr"]["reviews_required"],
-                 "dismiss_stale_reviews_on_push": True, "require_code_owner_review": True,
-                 # last-push approval would demand an approval even on agent-merged paths
-                 "require_last_push_approval": cfg["pr"]["reviews_required"] > 0,
-                 "required_review_thread_resolution": True,
-                 "allowed_merge_methods": [method]}},
-             {"type": "required_status_checks", "parameters": {
-                 "strict_required_status_checks_policy": integration,
-                 "required_status_checks": required_checks(cfg)}}]
+    rules = [
+        {"type": "deletion"},
+        {"type": "non_fast_forward"},
+        {
+            "type": "pull_request",
+            "parameters": {
+                "required_approving_review_count": cfg["pr"]["reviews_required"],
+                "dismiss_stale_reviews_on_push": True,
+                "require_code_owner_review": True,
+                # last-push approval would demand an approval even on agent-merged paths
+                "require_last_push_approval": cfg["pr"]["reviews_required"] > 0,
+                "required_review_thread_resolution": True,
+                "allowed_merge_methods": [method],
+            },
+        },
+        {
+            "type": "required_status_checks",
+            "parameters": {
+                "strict_required_status_checks_policy": integration,
+                "required_status_checks": required_checks(cfg),
+            },
+        },
+    ]
     return rules + ([{"type": "required_linear_history"}] if method == "rebase" else [])
 
 
 def ruleset(branch: str, cfg: dict) -> dict:
     """GitHub ruleset for one protected branch."""
     bypass = [{"actor_id": ADMIN_ROLE_ID, "actor_type": "RepositoryRole", "bypass_mode": "pull_request"}]
-    return {"name": f"standards-{branch}", "target": "branch", "enforcement": "active",
-            "conditions": {"ref_name": {"include": [f"refs/heads/{branch}"], "exclude": []}},
-            "bypass_actors": bypass if cfg["roles"].get("admin_bypass") else [],
-            "rules": branch_rules(branch, cfg)}
+    return {
+        "name": f"standards-{branch}",
+        "target": "branch",
+        "enforcement": "active",
+        "conditions": {"ref_name": {"include": [f"refs/heads/{branch}"], "exclude": []}},
+        "bypass_actors": bypass if cfg["roles"].get("admin_bypass") else [],
+        "rules": branch_rules(branch, cfg),
+    }
 
 
 def flag_value(args: list[str], flag: str) -> str | None:
@@ -456,11 +484,18 @@ COMMANDS = {
     "staged": lambda cfg, args: cmd_staged(cfg),
     "commit-msg": lambda cfg, args: cmd_commit_msg(cfg, args[0]),
     "pre-push": lambda cfg, args: cmd_pre_push(cfg, sys.stdin.read()),
-    "range": lambda cfg, args: cmd_range(cfg, args[0], {
-        "size": "--no-size" not in args, "branch": flag_value(args, "--branch"),
-        "body": read_file(flag_value(args, "--body-file"))}),
-    "tier": lambda cfg, args: cmd_tier(cfg, args[0], {
-        "pr": flag_value(args, "--pr"), "branch": flag_value(args, "--branch")}),
+    "range": lambda cfg, args: cmd_range(
+        cfg,
+        args[0],
+        {
+            "size": "--no-size" not in args,
+            "branch": flag_value(args, "--branch"),
+            "body": read_file(flag_value(args, "--body-file")),
+        },
+    ),
+    "tier": lambda cfg, args: cmd_tier(
+        cfg, args[0], {"pr": flag_value(args, "--pr"), "branch": flag_value(args, "--branch")}
+    ),
     "release": lambda cfg, args: cmd_release(cfg, args[0]),
     "guard": lambda cfg, args: cmd_guard(cfg, sys.stdin.read()),
     "codeowners": lambda cfg, args: show(codeowners(cfg)),
