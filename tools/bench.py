@@ -22,6 +22,7 @@ Three measurements:
 
 Needs `uv sync`. `report` writes results/bench/<variant>/summary.json.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -63,6 +64,7 @@ SEVERITY = {"high": 3, "medium": 2, "low": 1}
 @dataclass(frozen=True)
 class Agent:
     """How `run_claude` starts the CLI: with the plugin under test or not, its model and tools."""
+
     plugin: bool = False
     model: str | None = None  # None: the pinned agent model, Cfg.model
     tools: str = "Read,Write,Edit,Bash,PowerShell,Glob,Grep,Skill"
@@ -94,8 +96,9 @@ def module(slug: str) -> str:
 
 
 def sh(cwd: Path, *args: str, env: dict | None = None, timeout: int | None = None):
-    return subprocess.run(args, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                          env=env, timeout=timeout)
+    return subprocess.run(
+        args, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, timeout=timeout
+    )
 
 
 def py_env() -> dict:
@@ -117,8 +120,12 @@ def git_init(work: Path) -> None:
 
 
 def fetch_file(base: str, name: str, dest: Path) -> None:
-    done = subprocess.run([GH, "api", f"{base}/{name}", "-H", "Accept: application/vnd.github.raw"],
-                          capture_output=True, text=True, encoding="utf-8")
+    done = subprocess.run(
+        [GH, "api", f"{base}/{name}", "-H", "Accept: application/vnd.github.raw"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
     if done.returncode == 0:
         (dest / Path(name).name).write_text(done.stdout, encoding="utf-8")
 
@@ -128,8 +135,12 @@ def fetch() -> None:
         dest = TASKS_DIR / slug
         dest.mkdir(parents=True, exist_ok=True)
         base = f"repos/exercism/python/contents/exercises/practice/{slug}"
-        for name in [f"{module(slug)}.py", f"{module(slug)}_test.py", ".docs/instructions.md",
-                     ".docs/instructions.append.md"]:
+        for name in [
+            f"{module(slug)}.py",
+            f"{module(slug)}_test.py",
+            ".docs/instructions.md",
+            ".docs/instructions.append.md",
+        ]:
             fetch_file(base, name, dest)
         print(f"fetched {slug}")
 
@@ -138,16 +149,27 @@ def fetch() -> None:
 # Agent invocation and shared scoring
 # --------------------------------------------------------------------------------------
 
+
 def run_claude(cwd: Path, text: str, agent: Agent = Agent()) -> list[dict]:
-    cmd = [shutil.which("claude") or "claude", "-p", text, "--output-format", "stream-json",
-           "--verbose", "--setting-sources", "project", "--strict-mcp-config", "--allowedTools", agent.tools]
+    cmd = [
+        shutil.which("claude") or "claude",
+        "-p",
+        text,
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--setting-sources",
+        "project",
+        "--strict-mcp-config",
+        "--allowedTools",
+        agent.tools,
+    ]
     if agent.plugin:
         cmd += ["--plugin-dir", str(Cfg.plugin_dir)]
     cmd += ["--model", agent.model or Cfg.model]
     if Cfg.halted:
         raise UsageLimit
-    done = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8",
-                          env=py_env(), timeout=1800)
+    done = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", env=py_env(), timeout=1800)
     events = [json.loads(line) for line in done.stdout.splitlines() if line.startswith("{")]
     final = next((e for e in reversed(events) if e.get("type") == "result"), {})
     # Circuit breaker: a usage limit, or a CLI that died without a result (e.g. out of memory),
@@ -166,14 +188,21 @@ class UsageLimit(Exception):
 def usage(events: list[dict]) -> dict:
     final = next((e for e in reversed(events) if e.get("type") == "result"), {})
     u = final.get("usage", {})
-    uses = [c for e in events if e.get("type") == "assistant"
-            for c in e.get("message", {}).get("content", []) if c.get("type") == "tool_use"]
+    uses = [
+        c
+        for e in events
+        if e.get("type") == "assistant"
+        for c in e.get("message", {}).get("content", [])
+        if c.get("type") == "tool_use"
+    ]
     return {
         "valid": not final.get("is_error", True),  # usage-limit / API errors never count
         "model": ",".join(sorted(final.get("modelUsage", {}))),
         "turns": final.get("num_turns", 0),
-        "tokens": sum(u.get(k, 0) for k in ("input_tokens", "output_tokens",
-                      "cache_creation_input_tokens", "cache_read_input_tokens")),
+        "tokens": sum(
+            u.get(k, 0)
+            for k in ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+        ),
         "new_tokens": sum(u.get(k, 0) for k in ("input_tokens", "output_tokens", "cache_creation_input_tokens")),
         "cost_usd": final.get("total_cost_usd") or 0.0,
         "duration_s": round((final.get("duration_ms") or 0) / 1000),
@@ -191,22 +220,28 @@ def code_metrics(work: Path, slug: str) -> dict:
     path = work / f"{module(slug)}.py"
     lint = sh(work, sys.executable, str(ROOT / "tools" / "evals" / "lint.py"), path.name, "--json")
     findings = json.loads(lint.stdout)["findings"] if lint.stdout.strip() else []
-    return {"lint_findings": len(findings),
-            "lint_weighted": sum(SEVERITY.get(f["severity"], 1) for f in findings),
-            **quality.measure(path)}
+    return {
+        "lint_findings": len(findings),
+        "lint_weighted": sum(SEVERITY.get(f["severity"], 1) for f in findings),
+        **quality.measure(path),
+    }
 
 
 # --------------------------------------------------------------------------------------
 # Phase 1: solve and commit
 # --------------------------------------------------------------------------------------
 
+
 def prepare(slug: str, arm: str, work: Path) -> None:
     fresh_dir(work)
     for f in (TASKS_DIR / slug).iterdir():
         if f.name.endswith(".py") and not f.name.startswith("followup"):
             shutil.copy(f, work / f.name)
-    docs = "".join((TASKS_DIR / slug / n).read_text(encoding="utf-8")
-                   for n in ("instructions.md", "instructions.append.md") if (TASKS_DIR / slug / n).exists())
+    docs = "".join(
+        (TASKS_DIR / slug / n).read_text(encoding="utf-8")
+        for n in ("instructions.md", "instructions.append.md")
+        if (TASKS_DIR / slug / n).exists()
+    )
     (work / "INSTRUCTIONS.md").write_text(docs, encoding="utf-8")
     git_init(work)
     if arm == "standards":
@@ -214,7 +249,8 @@ def prepare(slug: str, arm: str, work: Path) -> None:
         toml = (TEMPLATES / "standards.toml").read_text(encoding="utf-8")
         (work / "standards.toml").write_text(
             toml.replace('test      = ""', 'test      = "python -m unittest discover -q -p *_test.py"'),
-            encoding="utf-8")
+            encoding="utf-8",
+        )
         (work / "CLAUDE.md").write_text(Cfg.claude_md, encoding="utf-8")
     sh(work, "git", "add", "-A")
     sh(work, "git", "commit", "-q", "-m", "chore: init")
@@ -227,15 +263,25 @@ def prepare(slug: str, arm: str, work: Path) -> None:
 
 def git_metrics(work: Path, slug: str) -> dict:
     shas = sh(work, "git", "rev-list", "--no-merges", "--all", "^bench-init").stdout.split()
-    problems = [standards.message_problem(sh(work, "git", "log", "-1", "--format=%B", s).stdout, STANDARDS_CFG)
-                or standards.size_problem(sh(work, "git", "show", "--numstat", "--format=", s).stdout, STANDARDS_CFG)
-                for s in shas]
-    protected = sum(1 for b in ("main", "dev")
-                    if sh(work, "git", "rev-list", "--count", f"bench-init..{b}").stdout.strip() not in ("", "0"))
-    return {"commits": len(shas), "commits_compliant": bool(shas) and not any(problems),
-            "commit_problems": [p for p in problems if p], "protected_branches_written": protected,
-            "uncommitted_solution": bool(sh(work, "git", "status", "--porcelain", "--",
-                                            f"{module(slug)}.py").stdout.strip())}
+    problems = [
+        standards.message_problem(sh(work, "git", "log", "-1", "--format=%B", s).stdout, STANDARDS_CFG)
+        or standards.size_problem(sh(work, "git", "show", "--numstat", "--format=", s).stdout, STANDARDS_CFG)
+        for s in shas
+    ]
+    protected = sum(
+        1
+        for b in ("main", "dev")
+        if sh(work, "git", "rev-list", "--count", f"bench-init..{b}").stdout.strip() not in ("", "0")
+    )
+    return {
+        "commits": len(shas),
+        "commits_compliant": bool(shas) and not any(problems),
+        "commit_problems": [p for p in problems if p],
+        "protected_branches_written": protected,
+        "uncommitted_solution": bool(
+            sh(work, "git", "status", "--porcelain", "--", f"{module(slug)}.py").stdout.strip()
+        ),
+    }
 
 
 def finished(path: Path) -> dict | None:
@@ -253,18 +299,31 @@ def phase1(slug: str, arm: str, rep: int) -> dict:
     work = Cfg.work() / arm / f"{slug}-r{rep}"
     prepare(slug, arm, work)
     agent = Agent(plugin=arm == "standards")
-    events = run_claude(work, f"Complete the task described in INSTRUCTIONS.md by editing {module(slug)}.py. "
-                              f"The tests are in {module(slug)}_test.py (run with `python -m unittest`); do not "
-                              f"edit them. When you are done, commit your work to git.", agent)
+    events = run_claude(
+        work,
+        f"Complete the task described in INSTRUCTIONS.md by editing {module(slug)}.py. "
+        f"The tests are in {module(slug)}_test.py (run with `python -m unittest`); do not "
+        f"edit them. When you are done, commit your work to git.",
+        agent,
+    )
     test_file = f"{module(slug)}_test.py"
     shutil.copy(TASKS_DIR / slug / test_file, work / test_file)  # anti-tamper before grading
-    result = {"task": slug, "arm": arm, "rep": rep, **usage(events),
-              "tests_pass": tests_pass(work, test_file[:-3]),
-              "runtime_ms": quality.runtime_ms(work, test_file[:-3], py_env()),
-              **code_metrics(work, slug), **git_metrics(work, slug)}
+    result = {
+        "task": slug,
+        "arm": arm,
+        "rep": rep,
+        **usage(events),
+        "tests_pass": tests_pass(work, test_file[:-3]),
+        "runtime_ms": quality.runtime_ms(work, test_file[:-3], py_env()),
+        **code_metrics(work, slug),
+        **git_metrics(work, slug),
+    }
     save(out, result, events)
-    print(f"p1 {arm:<9} {slug:<14} r{rep} pass={result['tests_pass']} MI={result.get('maintainability_index')} "
-          f"cog={result.get('cognitive_total')} ${result['cost_usd']:.2f}", flush=True)
+    print(
+        f"p1 {arm:<9} {slug:<14} r{rep} pass={result['tests_pass']} MI={result.get('maintainability_index')} "
+        f"cog={result.get('cognitive_total')} ${result['cost_usd']:.2f}",
+        flush=True,
+    )
     return result
 
 
@@ -277,6 +336,7 @@ def save(out: Path, result: dict, events: list[dict]) -> None:
 # --------------------------------------------------------------------------------------
 # Phase 2: change cost, by a neutral agent
 # --------------------------------------------------------------------------------------
+
 
 def commit_start(work: Path) -> None:
     git_init(work)
@@ -308,19 +368,31 @@ def phase2(slug: str, arm: str, rep: int) -> dict | None:
     shutil.copy(TASKS_DIR / slug / f"{m}_test.py", work / f"{m}_test.py")
     shutil.copy(TASKS_DIR / slug / "FOLLOWUP.md", work / "FOLLOWUP.md")
     commit_start(work)
-    events = run_claude(work, f"Implement the requirement in FOLLOWUP.md by changing {m}.py. Keep the existing "
-                              f"tests in {m}_test.py passing and do not edit them.")
+    events = run_claude(
+        work,
+        f"Implement the requirement in FOLLOWUP.md by changing {m}.py. Keep the existing "
+        f"tests in {m}_test.py passing and do not edit them.",
+    )
     shutil.copy(TASKS_DIR / slug / f"{m}_test.py", work / f"{m}_test.py")
     shutil.copy(TASKS_DIR / slug / "followup_test.py", work / "followup_test.py")
     added, deleted = diff_size(work, f"{m}.py")
-    result = {"task": slug, "arm": arm, "rep": rep, **usage(events),
-              "followup_pass": tests_pass(work, "followup_test"),
-              "original_still_pass": tests_pass(work, f"{m}_test"),
-              "diff_added": added, "diff_deleted": deleted,
-              **{f"after_{k}": v for k, v in code_metrics(work, slug).items()}}
+    result = {
+        "task": slug,
+        "arm": arm,
+        "rep": rep,
+        **usage(events),
+        "followup_pass": tests_pass(work, "followup_test"),
+        "original_still_pass": tests_pass(work, f"{m}_test"),
+        "diff_added": added,
+        "diff_deleted": deleted,
+        **{f"after_{k}": v for k, v in code_metrics(work, slug).items()},
+    }
     save(out, result, events)
-    print(f"p2 {arm:<9} {slug:<14} r{rep} followup={result['followup_pass']} kept={result['original_still_pass']} "
-          f"diff=+{added}/-{deleted} ${result['cost_usd']:.2f}", flush=True)
+    print(
+        f"p2 {arm:<9} {slug:<14} r{rep} followup={result['followup_pass']} kept={result['original_still_pass']} "
+        f"diff=+{added}/-{deleted} ${result['cost_usd']:.2f}",
+        flush=True,
+    )
     return result
 
 
@@ -350,8 +422,9 @@ def chain_step(run: tuple[str, str, int], k: int) -> dict | None:
     if done := finished(out):
         return done
     prev = Cfg.work() / step_dir(k - 1) / arm / f"{slug}-r{rep}"
-    if not (TASKS_DIR / slug / f"FOLLOWUP{k}.md").exists() or \
-            not finished(Cfg.out() / step_dir(k - 1) / arm / f"{slug}-r{rep}.json"):
+    if not (TASKS_DIR / slug / f"FOLLOWUP{k}.md").exists() or not finished(
+        Cfg.out() / step_dir(k - 1) / arm / f"{slug}-r{rep}.json"
+    ):
         return None  # never build a chain step on an invalid (e.g. usage-limited) earlier step
     m = module(slug)
     before = {s: tests_pass(prev, s) for s in hidden_suites(slug, k - 1)}
@@ -361,20 +434,32 @@ def chain_step(run: tuple[str, str, int], k: int) -> dict | None:
     shutil.copy(TASKS_DIR / slug / f"{m}_test.py", work / f"{m}_test.py")
     copy_specs(slug, k, work)
     commit_start(work)
-    events = run_claude(work, f"Implement the requirement in FOLLOWUP{k}.md by changing {m}.py. The earlier "
-                              f"requirements in the other FOLLOWUP*.md files must keep working, and the tests in "
-                              f"{m}_test.py must keep passing; do not edit them.")
+    events = run_claude(
+        work,
+        f"Implement the requirement in FOLLOWUP{k}.md by changing {m}.py. The earlier "
+        f"requirements in the other FOLLOWUP*.md files must keep working, and the tests in "
+        f"{m}_test.py must keep passing; do not edit them.",
+    )
     for s in hidden_suites(slug, k):
         shutil.copy(TASKS_DIR / slug / f"{s}.py", work / f"{s}.py")
     after = {s: tests_pass(work, s) for s in hidden_suites(slug, k)}
-    result = {"task": slug, "arm": arm, "rep": rep, "step": k, **usage(events),
-              "step_pass": after[hidden_suites(slug, k)[-1]],
-              "regressions": sum(before[s] and not after[s] for s in before),
-              "all_pass": all(after.values()),
-              **{f"after_{key}": v for key, v in code_metrics(work, slug).items()}}
+    result = {
+        "task": slug,
+        "arm": arm,
+        "rep": rep,
+        "step": k,
+        **usage(events),
+        "step_pass": after[hidden_suites(slug, k)[-1]],
+        "regressions": sum(before[s] and not after[s] for s in before),
+        "all_pass": all(after.values()),
+        **{f"after_{key}": v for key, v in code_metrics(work, slug).items()},
+    }
     save(out, result, events)
-    print(f"p2.{k} {arm:<9} {slug:<14} r{rep} step={result['step_pass']} regressions={result['regressions']} "
-          f"all={result['all_pass']} ${result['cost_usd']:.2f}", flush=True)
+    print(
+        f"p2.{k} {arm:<9} {slug:<14} r{rep} step={result['step_pass']} regressions={result['regressions']} "
+        f"all={result['all_pass']} ${result['cost_usd']:.2f}",
+        flush=True,
+    )
     return result
 
 
@@ -387,6 +472,7 @@ def chain(slug: str, arm: str, rep: int) -> None:
 # --------------------------------------------------------------------------------------
 # Blind pairwise judge
 # --------------------------------------------------------------------------------------
+
 
 def ask_judge(prompt: str) -> tuple[str, float]:
     with tempfile.TemporaryDirectory() as tmp:
@@ -408,14 +494,18 @@ def judge(slug: str, rep: int) -> dict | None:
     result = {"task": slug, "rep": rep, **pairwise(ask_judge, task, {arm: code[arm] for arm in ARMS})}
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2), encoding="utf-8")
-    print(f"judge {slug:<14} r{rep} {result.get('order1', 'invalid')}/{result.get('order2', '-')} "
-          f"-> {result.get('winner', 'invalid')}", flush=True)
+    print(
+        f"judge {slug:<14} r{rep} {result.get('order1', 'invalid')}/{result.get('order2', '-')} "
+        f"-> {result.get('winner', 'invalid')}",
+        flush=True,
+    )
     return result
 
 
 # --------------------------------------------------------------------------------------
 # Report
 # --------------------------------------------------------------------------------------
+
 
 def load(pattern: str) -> list[dict]:
     rows = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(Cfg.out().glob(pattern))]
@@ -460,24 +550,47 @@ def paired_p(rows: list[dict], key: str) -> float | None:
     if not diffs or not any(diffs):
         return None
     rng, observed = random.Random(0), abs(sum(diffs))
-    return round(sum(abs(sum(d * rng.choice((-1, 1)) for d in diffs)) >= observed
-                     for _ in range(20000)) / 20000, 4)
+    return round(sum(abs(sum(d * rng.choice((-1, 1)) for d in diffs)) >= observed for _ in range(20000)) / 20000, 4)
 
 
-P1_KEYS = [("tests_pass", "tests pass rate"), ("commits_compliant", "commits compliant"),
-           ("protected_branches_written", "wrote to main/dev"), ("lint_weighted", "lint severity"),
-           ("mi_structural", "MI structural ↑"), ("maintainability_index", "MI raw (rewards comments) ↑"),
-           ("comment_ratio", "comment ratio"), ("cognitive_total", "cognitive complexity"),
-           ("cc_max", "max cyclomatic complexity"), ("halstead_volume", "halstead volume"),
-           ("ruff_violations", "ruff violations"), ("sloc", "source lines"), ("runtime_ms", "test runtime ms"),
-           ("turns", "turns"), ("new_tokens", "new tokens"), ("cost_usd", "cost USD")]
-CHAIN_KEYS = [("step_pass", "this step's tests pass ↑"), ("regressions", "earlier suites broken"),
-              ("all_pass", "all suites pass ↑"), ("turns", "turns"), ("new_tokens", "new tokens"),
-              ("cost_usd", "cost USD"), ("after_cognitive_total", "cognitive after")]
-P2_KEYS = [("followup_pass", "follow-up pass rate ↑"), ("original_still_pass", "no regression ↑"),
-           ("diff_added", "lines added"), ("diff_deleted", "lines deleted"), ("turns", "turns"),
-           ("new_tokens", "new tokens"), ("cost_usd", "cost USD"),
-           ("after_mi_structural", "MI structural after ↑"), ("after_cognitive_total", "cognitive after")]
+P1_KEYS = [
+    ("tests_pass", "tests pass rate"),
+    ("commits_compliant", "commits compliant"),
+    ("protected_branches_written", "wrote to main/dev"),
+    ("lint_weighted", "lint severity"),
+    ("mi_structural", "MI structural ↑"),
+    ("maintainability_index", "MI raw (rewards comments) ↑"),
+    ("comment_ratio", "comment ratio"),
+    ("cognitive_total", "cognitive complexity"),
+    ("cc_max", "max cyclomatic complexity"),
+    ("halstead_volume", "halstead volume"),
+    ("ruff_violations", "ruff violations"),
+    ("sloc", "source lines"),
+    ("runtime_ms", "test runtime ms"),
+    ("turns", "turns"),
+    ("new_tokens", "new tokens"),
+    ("cost_usd", "cost USD"),
+]
+CHAIN_KEYS = [
+    ("step_pass", "this step's tests pass ↑"),
+    ("regressions", "earlier suites broken"),
+    ("all_pass", "all suites pass ↑"),
+    ("turns", "turns"),
+    ("new_tokens", "new tokens"),
+    ("cost_usd", "cost USD"),
+    ("after_cognitive_total", "cognitive after"),
+]
+P2_KEYS = [
+    ("followup_pass", "follow-up pass rate ↑"),
+    ("original_still_pass", "no regression ↑"),
+    ("diff_added", "lines added"),
+    ("diff_deleted", "lines deleted"),
+    ("turns", "turns"),
+    ("new_tokens", "new tokens"),
+    ("cost_usd", "cost USD"),
+    ("after_mi_structural", "MI structural after ↑"),
+    ("after_cognitive_total", "cognitive after"),
+]
 
 
 def models_used(rows: list[dict]) -> dict:
@@ -516,11 +629,17 @@ def report() -> None:
             summary[f"chain{k}"] = table(f"CHAIN STEP {k} (neutral agent, builds on step {k - 1})", rows, CHAIN_KEYS)
     if judged:
         wins = {w: sum(j["winner"] == w for j in judged) for w in ("standards", "none", "tie")}
-        print(f"\nBLIND JUDGE ({JUDGE_MODEL}, order-consistent only): {wins} of {len(judged)}; "
-              f"mean score none {mean(judged, None, 'score_none')}"
-              f" vs standards {mean(judged, None, 'score_standards')}")
-        summary["judge"] = {"wins": wins, "n": len(judged), "score_none": mean(judged, None, "score_none"),
-                            "score_standards": mean(judged, None, "score_standards")}
+        print(
+            f"\nBLIND JUDGE ({JUDGE_MODEL}, order-consistent only): {wins} of {len(judged)}; "
+            f"mean score none {mean(judged, None, 'score_none')}"
+            f" vs standards {mean(judged, None, 'score_standards')}"
+        )
+        summary["judge"] = {
+            "wins": wins,
+            "n": len(judged),
+            "score_none": mean(judged, None, "score_none"),
+            "score_standards": mean(judged, None, "score_standards"),
+        }
     (Cfg.out() / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
 
@@ -565,8 +684,9 @@ def main(argv: list[str]) -> int:
     if cfg.command == "fetch":
         fetch()
         return 0
-    for stage in (["run", "followup", "chain", "judge"] if cfg.command == "all" else
-                  [cfg.command] if cfg.command in jobs else []):
+    for stage in (
+        ["run", "followup", "chain", "judge"] if cfg.command == "all" else [cfg.command] if cfg.command in jobs else []
+    ):
         with ThreadPoolExecutor(cfg.parallel) as pool:
             list(pool.map(lambda job: safe(job[0], *job[1]), jobs[stage]))
         if Cfg.halted:
