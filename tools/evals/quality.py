@@ -1,4 +1,4 @@
-"""Research-backed code-quality metrics for a Python file. Eval tooling only (deps: requirements.txt).
+"""Research-backed code-quality metrics for a Python file. Eval tooling only (deps: `uv sync`).
 
   maintainability_index  Oman & Hagemeister 1992 (radon's variant, 0-100, higher is better).
                          Its comment term rewards comment density — criticized by Heitlager,

@@ -20,7 +20,7 @@ Three measurements:
   python tools/bench.py run|followup|judge|report --variant NAME [--reps 2] [--tasks a,b]
          [--plugin-dir DIR] [--claude-md FILE] [--parallel 4]
 
-Needs tools/evals/requirements.txt. `report` writes results/bench/<variant>/summary.json.
+Needs `uv sync`. `report` writes results/bench/<variant>/summary.json.
 """
 from __future__ import annotations
 

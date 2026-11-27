@@ -1,0 +1,24 @@
+[project]
+name = "clean-code-standards"
+version = "0.0.0"
+description = "Maintainer environment for the clean-code-standards plugin"
+requires-python = ">=3.12"
+
+[dependency-groups]
+dev = ["ruff==0.17.*", "radon==6.*", "cognitive_complexity==1.*", "skillevaluator==0.9.*"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 120
+extend-exclude = ["tools/evals/benchmarks"]  # upstream exercism tasks the evals run against
+
+[tool.ruff.lint]
+preview = true
+select = ["E", "F", "W", "I", "B", "UP", "C90", "PLR0913", "PLR0915", "PLR1702", "PLR2004", "FBT"]
+
+[tool.ruff.lint.pylint]  # the CLAUDE.md code rules
+max-args = 3
+max-statements = 20
+max-nested-blocks = 2
