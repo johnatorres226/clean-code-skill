@@ -45,7 +45,7 @@ class CaseScore:
     findings: int
     weighted: int
     by_code: dict[str, int]
-    tokens: int = 0        # all input (incl. cache) + output; 0 when no usage recorded
+    tokens: int = 0  # all input (incl. cache) + output; 0 when no usage recorded
     cost_usd: float = 0.0
 
     @property
@@ -85,15 +85,24 @@ def build_prompt(case: dict, skill_dir: Path | None) -> str:
 
 def case_command(cli: str, case: dict, run: SimpleNamespace) -> list[str]:
     prompt = (
-        build_prompt(case, run.skill_dir)
-        + f"\n\nWrite the complete file. Output ONLY {case['language']} source code, "
-          f"with no markdown fences and no commentary."
+        build_prompt(case, run.skill_dir) + f"\n\nWrite the complete file. Output ONLY {case['language']} source code, "
+        f"with no markdown fences and no commentary."
     )
     # Isolate both arms from the operator's own setup (hooks, plugins, skills, MCP,
     # project CLAUDE.md) so the only difference between runs is the skill itself.
-    command = [cli, "-p", prompt, "--output-format", "json",
-               "--setting-sources", "", "--strict-mcp-config",
-               "--disable-slash-commands", "--allowedTools", "Read,Grep,Glob"]
+    command = [
+        cli,
+        "-p",
+        prompt,
+        "--output-format",
+        "json",
+        "--setting-sources",
+        "",
+        "--strict-mcp-config",
+        "--disable-slash-commands",
+        "--allowedTools",
+        "Read,Grep,Glob",
+    ]
     if run.skill_dir:
         command += ["--add-dir", str(run.skill_dir)]
     if run.model:
@@ -102,10 +111,10 @@ def case_command(cli: str, case: dict, run: SimpleNamespace) -> list[str]:
 
 
 def save_reply(out_dir: Path, case: dict, reply: dict) -> None:
-    (out_dir / f"{case['id']}.usage.json").write_text(json.dumps({
-        key: reply.get(key) for key in
-        ("usage", "total_cost_usd", "num_turns", "duration_ms")
-    }, indent=2), encoding="utf-8")
+    (out_dir / f"{case['id']}.usage.json").write_text(
+        json.dumps({key: reply.get(key) for key in ("usage", "total_cost_usd", "num_turns", "duration_ms")}, indent=2),
+        encoding="utf-8",
+    )
     body = reply["result"].strip()
     if body.startswith("```"):  # strip fences the model may add anyway
         body = "\n".join(body.split("\n")[1:-1])
@@ -117,8 +126,14 @@ def save_reply(out_dir: Path, case: dict, reply: dict) -> None:
 def run_case(cli: str, case: dict, run: SimpleNamespace) -> None:
     print(f"running {case['id']} ...", flush=True)
     try:
-        done = subprocess.run(case_command(cli, case, run), capture_output=True, text=True,
-                              encoding="utf-8", timeout=run.timeout_s, cwd=run.out_dir)
+        done = subprocess.run(
+            case_command(cli, case, run),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=run.timeout_s,
+            cwd=run.out_dir,
+        )
     except subprocess.TimeoutExpired:
         print(f"  timed out after {run.timeout_s}s", file=sys.stderr)
         return
@@ -140,11 +155,17 @@ def run_cases(prompts: list[dict], run: SimpleNamespace) -> int:
     for case in prompts:
         run_case(cli, case, run)
 
-    (run.out_dir / "_meta.json").write_text(json.dumps({
-        "skill": str(run.skill_dir) if run.skill_dir else None,
-        "model": run.model,
-        "cases": [c["id"] for c in prompts],
-    }, indent=2), encoding="utf-8")
+    (run.out_dir / "_meta.json").write_text(
+        json.dumps(
+            {
+                "skill": str(run.skill_dir) if run.skill_dir else None,
+                "model": run.model,
+                "cases": [c["id"] for c in prompts],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return 0
 
 
@@ -181,32 +202,42 @@ def score_dir(results_dir: Path, prompts: list[dict], linter: Path) -> list[Case
         usage_file = results_dir / f"{case['id']}.usage.json"
         usage = json.loads(usage_file.read_text(encoding="utf-8")) if usage_file.exists() else {}
         counts = usage.get("usage") or {}
-        scores.append(CaseScore(
-            case_id=case["id"],
-            language=case["language"],
-            files=len(matches),
-            findings=len(findings),
-            weighted=weighted,
-            by_code=by_code,
-            tokens=sum(counts.get(k, 0) for k in ("input_tokens", "output_tokens",
-                       "cache_creation_input_tokens", "cache_read_input_tokens")),
-            cost_usd=usage.get("total_cost_usd") or 0.0,
-        ))
+        scores.append(
+            CaseScore(
+                case_id=case["id"],
+                language=case["language"],
+                files=len(matches),
+                findings=len(findings),
+                weighted=weighted,
+                by_code=by_code,
+                tokens=sum(
+                    counts.get(k, 0)
+                    for k in ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+                ),
+                cost_usd=usage.get("total_cost_usd") or 0.0,
+            )
+        )
     return scores
 
 
 def write_scorecard(results_dir: Path, scores: list[CaseScore]) -> Path:
     path = results_dir / "scorecard.json"
     scored = [s for s in scores if not s.missing]
-    path.write_text(json.dumps({
-        "total_findings": sum(s.findings for s in scored),
-        "total_weighted": sum(s.weighted for s in scored),
-        "cases_clean": sum(1 for s in scored if s.clean),
-        "cases_scored": len(scored),
-        "cases_missing": [s.case_id for s in scores if s.missing],
-        "cases_total": len(scores),
-        "cases": [asdict(s) for s in scores],
-    }, indent=2), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "total_findings": sum(s.findings for s in scored),
+                "total_weighted": sum(s.weighted for s in scored),
+                "cases_clean": sum(1 for s in scored if s.clean),
+                "cases_scored": len(scored),
+                "cases_missing": [s.case_id for s in scores if s.missing],
+                "cases_total": len(scores),
+                "cases": [asdict(s) for s in scores],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return path
 
 
@@ -222,8 +253,10 @@ def report_top_codes(scores: list[CaseScore]) -> None:
         for code, count in s.by_code.items():
             all_codes[code] = all_codes.get(code, 0) + count
     if all_codes:
-        print("  most common findings:", ", ".join(
-            f"{c}×{n}" for c, n in sorted(all_codes.items(), key=lambda kv: -kv[1])[:6]))
+        print(
+            "  most common findings:",
+            ", ".join(f"{c}×{n}" for c, n in sorted(all_codes.items(), key=lambda kv: -kv[1])[:6]),
+        )
 
 
 def report_scores(scores: list[CaseScore], label: str) -> None:
@@ -234,12 +267,12 @@ def report_scores(scores: list[CaseScore], label: str) -> None:
     clean = sum(1 for s in scores if s.clean)
     scored = [s for s in scores if not s.missing]
     missing = [s for s in scores if s.missing]
-    print(f"  {'TOTAL':<26} {'':>5} {sum(s.findings for s in scores):>9} "
-          f"{sum(s.weighted for s in scores):>9}")
+    print(f"  {'TOTAL':<26} {'':>5} {sum(s.findings for s in scores):>9} {sum(s.weighted for s in scores):>9}")
     print(f"  cases producing lint-clean code: {clean}/{len(scored)} scored")
     if missing:
-        print(f"  !! {len(missing)} case(s) produced NO output and were excluded: "
-              f"{', '.join(s.case_id for s in missing)}")
+        print(
+            f"  !! {len(missing)} case(s) produced NO output and were excluded: {', '.join(s.case_id for s in missing)}"
+        )
         print("     Comparisons across runs are only valid on cases present in both.")
     report_top_codes(scores)
 
@@ -259,8 +292,10 @@ def sums(cases: dict[str, dict], shared: list[str], key: str) -> int:
 
 
 def report_totals(before_cases: dict, after_cases: dict, shared: list[str]) -> None:
-    clean = (sum(1 for c in shared if before_cases[c]["findings"] == 0),
-             sum(1 for c in shared if after_cases[c]["findings"] == 0))
+    clean = (
+        sum(1 for c in shared if before_cases[c]["findings"] == 0),
+        sum(1 for c in shared if after_cases[c]["findings"] == 0),
+    )
     print(f"  {'metric':<34} {'before':>8} {'after':>8} {'delta':>8}")
     for label, key, lower_is_better in [
         ("total findings", "findings", True),
@@ -293,8 +328,7 @@ def compare(before_dir: Path, after_dir: Path) -> int:
     print(f"  Comparing {len(shared)} case(s) present in both runs.\n")
     report_totals(before_cases, after_cases, shared)
 
-    regressions = [after_cases[c] for c in shared
-                   if after_cases[c]["weighted"] > before_cases[c]["weighted"]]
+    regressions = [after_cases[c] for c in shared if after_cases[c]["weighted"] > before_cases[c]["weighted"]]
     if regressions:
         print("\n  REGRESSIONS (per-case, weighted severity increased):")
         for c in regressions:
@@ -313,8 +347,7 @@ def compare(before_dir: Path, after_dir: Path) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_run = sub.add_parser("run", help="Generate outputs for each eval case")
@@ -323,8 +356,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--prompts", default=str(DEFAULT_PROMPTS))
     p_run.add_argument("--model", default=None)
     p_run.add_argument("--timeout", type=int, default=300)
-    p_run.add_argument("--no-skill", action="store_true",
-                       help="Baseline run: do not give the model the skill")
+    p_run.add_argument("--no-skill", action="store_true", help="Baseline run: do not give the model the skill")
 
     p_score = sub.add_parser("score", help="Lint a results directory and write a scorecard")
     p_score.add_argument("results_dir")
@@ -339,8 +371,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def cmd_score(cfg: argparse.Namespace) -> int:
     prompts = load_prompts(Path(cfg.prompts))
-    linter = Path(cfg.linter) if cfg.linter else \
-        Path(__file__).resolve().parent / "evals" / "lint.py"
+    linter = Path(cfg.linter) if cfg.linter else Path(__file__).resolve().parent / "evals" / "lint.py"
     if not linter.exists():
         print(f"Linter not found: {linter}", file=sys.stderr)
         return 2
