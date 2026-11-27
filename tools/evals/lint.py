@@ -50,6 +50,12 @@ ALLOWED_NUMBERS = {"0", "1", "2", "-1", "0.0", "1.0", "0.5", "100", "1000"}
 
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 
+MIN_COMMENTED_CODE_RUN = 2    # one commented line is often prose; two in a row are code
+SHORT_NAME_LENGTH = 2         # a function name this short cannot state intent
+TRIVIAL_BODY_LINES = 5        # a public function this short documents itself
+UNINFORMATIVE_NAMES = {"tmp", "temp", "foo", "bar", "data", "info", "val", "obj", "res"}
+FLAG_NAME_RE = re.compile(r"^(is_|has_|should_|use_|enable_|do_|force_|verbose$|debug$)")
+
 
 # --------------------------------------------------------------------------------------
 # Finding model
@@ -121,18 +127,43 @@ def strip_strings_and_comments(text: str) -> str:
     return STRING_OR_COMMENT_RE.sub(blank, text)
 
 
-def is_comment_line(line: str, python: bool) -> bool:
-    stripped = line.lstrip()
-    if python:
-        return stripped.startswith("#")
-    return stripped.startswith("//") or stripped.startswith("*") or stripped.startswith("/*")
+def comment_markers(path: Path) -> tuple[str, ...]:
+    return ("#",) if path.suffix in PYTHON_SUFFIXES else ("//", "*", "/*")
+
+
+def commented_code_runs(lines: list[str]) -> list[tuple[int, int]]:
+    """(first line, length) of each run of consecutive lines that look like commented-out code."""
+    runs: list[tuple[int, int]] = []
+    start = 0
+    for index, line in enumerate(lines, start=1):
+        if COMMENTED_CODE_RE.match(line):
+            start = start or index
+        elif start:
+            runs.append((start, index - start))
+            start = 0
+    if start:
+        runs.append((start, len(lines) + 1 - start))
+    return runs
+
+
+def todo_findings(rel: str, lines: list[str], markers: tuple[str, ...]) -> list[Finding]:
+    findings: list[Finding] = []
+    for index, line in enumerate(lines, start=1):
+        todo = TODO_RE.search(line)
+        if todo and line.lstrip().startswith(markers) and not TODO_OWNER_RE.search(line):
+            findings.append(Finding(
+                rel, index, "C1", "low",
+                f"{todo.group(1).upper()} without an owner or exit condition.",
+                "Use TODO(name, date): <what unblocks removal> — or delete it.",
+            ))
+    return findings
 
 
 def check_common_text(path: Path, lines: list[str], cfg: argparse.Namespace) -> list[Finding]:
     """Checks that apply to every language and need only the raw text."""
     findings: list[Finding] = []
-    python = path.suffix in PYTHON_SUFFIXES
     rel = str(path)
+    text = [raw.rstrip("\n") for raw in lines]
 
     if len(lines) > cfg.max_file_lines:
         findings.append(Finding(
@@ -140,108 +171,58 @@ def check_common_text(path: Path, lines: list[str], cfg: argparse.Namespace) -> 
             f"File is {len(lines)} lines (limit {cfg.max_file_lines}).",
             "Large files usually hold several concepts. Consider splitting by responsibility.",
         ))
-
-    commented_code_run = 0
-    commented_code_start = 0
-
-    for index, raw in enumerate(lines, start=1):
-        line = raw.rstrip("\n")
-
-        if len(line) > cfg.max_line_length:
-            findings.append(Finding(
-                rel, index, "G24", "low",
-                f"Line is {len(line)} chars (limit {cfg.max_line_length}).",
-                "Extract a named intermediate rather than wrapping.",
-            ))
-
-        if line.rstrip() != line:
-            findings.append(Finding(rel, index, "G12", "low", "Trailing whitespace.", ""))
-
-        # Commented-out code (C5): report runs, not every line.
-        if COMMENTED_CODE_RE.match(line):
-            if commented_code_run == 0:
-                commented_code_start = index
-            commented_code_run += 1
-        else:
-            if commented_code_run >= 2:
-                findings.append(Finding(
-                    rel, commented_code_start, "C5", "medium",
-                    f"{commented_code_run} lines that look like commented-out code.",
-                    "Delete it. Version control remembers.",
-                ))
-            commented_code_run = 0
-
-        todo = TODO_RE.search(line)
-        if todo and is_comment_line(line, python):
-            if not TODO_OWNER_RE.search(line):
-                findings.append(Finding(
-                    rel, index, "C1", "low",
-                    f"{todo.group(1).upper()} without an owner or exit condition.",
-                    "Use TODO(name, date): <what unblocks removal> — or delete it.",
-                ))
-
-    if commented_code_run >= 2:
-        findings.append(Finding(
-            rel, commented_code_start, "C5", "medium",
-            f"{commented_code_run} lines that look like commented-out code.",
-            "Delete it. Version control remembers.",
-        ))
-
-    return findings
+    findings += [Finding(rel, index, "G24", "low",
+                         f"Line is {len(line)} chars (limit {cfg.max_line_length}).",
+                         "Extract a named intermediate rather than wrapping.")
+                 for index, line in enumerate(text, start=1) if len(line) > cfg.max_line_length]
+    findings += [Finding(rel, index, "G12", "low", "Trailing whitespace.", "")
+                 for index, line in enumerate(text, start=1) if line.rstrip() != line]
+    findings += [Finding(rel, start, "C5", "medium",
+                         f"{length} lines that look like commented-out code.",
+                         "Delete it. Version control remembers.")
+                 for start, length in commented_code_runs(text) if length >= MIN_COMMENTED_CODE_RUN]
+    return findings + todo_findings(rel, text, comment_markers(path))
 
 
-def check_magic_numbers(path: Path, text: str, cfg: argparse.Namespace) -> list[Finding]:
+# Lines that are themselves constant definitions are fine — that is the fix for
+# a magic number, so flagging them would punish the correct behavior.
+CONST_DEF_RE = re.compile(
+    # any declaration marked const/constexpr/final, whatever the naming style
+    r"^\s*(?:(?:public|private|protected|static|inline|template\s*<[^>]*>)\s+)*"
+    r"(?:const|constexpr|consteval|final)\b.*="
+    # SCREAMING_SNAKE or kCamelCase name being assigned
+    r"|^\s*(?:(?:public|private|protected|static|final|const|constexpr|inline)\s+)*"
+    r"[A-Za-z_][\w:<>,\s\*&\[\]]*\s+(?:[A-Z][A-Z0-9_]*|k[A-Z]\w*)\s*(?:=|\{)"
+    r"|^\s*#define\s+\w+"
+    # Python module constant, with or without an annotation
+    r"|^\s*(?:[A-Z][A-Z0-9_]*|k[A-Z]\w*)\s*(?::\s*[\w\[\], .\"']+)?\s*="
+)
+ENUM_LINE_RE = re.compile(r"^\s*[A-Za-z_]\w*\s*=\s*-?\d+\s*,?\s*$")
+IMPORT_LINE_RE = re.compile(r"^\s*(?:#include|import|from|package|using)\b")  # array sizes, versions: noise
+
+
+def magic_literals(line: str) -> list[str]:
+    """Numeric literals on one scrubbed line that need a name, in order, each once."""
+    if not line.strip() or CONST_DEF_RE.search(line) or ENUM_LINE_RE.match(line) or IMPORT_LINE_RE.match(line):
+        return []
+    for_header = re.match(r"^\s*for\b", line)
+    found: list[str] = []
+    for match in NUMBER_LITERAL_RE.finditer(line):
+        literal = match.group(0)
+        # Skip loop bounds like `i < 3` only if very small ints in a for-header.
+        loop_bound = for_header and re.fullmatch(r"-?\d{1,2}", literal)
+        if literal not in ALLOWED_NUMBERS and not loop_bound and literal not in found:
+            found.append(literal)
+    return found
+
+
+def check_magic_numbers(path: Path, text: str) -> list[Finding]:
     """G25: numeric literals whose meaning must be inferred."""
-    findings: list[Finding] = []
     rel = str(path)
-    python = path.suffix in PYTHON_SUFFIXES
-    scrubbed = strip_strings_and_comments(text)
-
-    # Lines that are themselves constant definitions are fine — that is the fix for
-    # a magic number, so flagging them would punish the correct behavior.
-    const_def_re = re.compile(
-        # any declaration marked const/constexpr/final, whatever the naming style
-        r"^\s*(?:(?:public|private|protected|static|inline|template\s*<[^>]*>)\s+)*"
-        r"(?:const|constexpr|consteval|final)\b.*="
-        # SCREAMING_SNAKE or kCamelCase name being assigned
-        r"|^\s*(?:(?:public|private|protected|static|final|const|constexpr|inline)\s+)*"
-        r"[A-Za-z_][\w:<>,\s\*&\[\]]*\s+(?:[A-Z][A-Z0-9_]*|k[A-Z]\w*)\s*(?:=|\{)"
-        r"|^\s*#define\s+\w+"
-        # Python module constant, with or without an annotation
-        r"|^\s*(?:[A-Z][A-Z0-9_]*|k[A-Z]\w*)\s*(?::\s*[\w\[\], .\"']+)?\s*="
-    )
-    enum_line_re = re.compile(r"^\s*[A-Za-z_]\w*\s*=\s*-?\d+\s*,?\s*$")
-
-    reported: set[tuple[int, str]] = set()
-    for index, line in enumerate(scrubbed.splitlines(), start=1):
-        if not line.strip():
-            continue
-        if const_def_re.search(line) or enum_line_re.match(line):
-            continue
-        # Array sizes and versions in includes/imports are noise.
-        if re.match(r"^\s*(?:#include|import|from|package|using)\b", line):
-            continue
-
-        for match in NUMBER_LITERAL_RE.finditer(line):
-            literal = match.group(0)
-            if literal in ALLOWED_NUMBERS:
-                continue
-            # Skip loop bounds like `i < 3` only if very small ints in a for-header.
-            if re.match(r"^\s*for\b", line) and re.fullmatch(r"-?\d{1,2}", literal):
-                continue
-            key = (index, literal)
-            if key in reported:
-                continue
-            reported.add(key)
-            findings.append(Finding(
-                rel, index, "G25", "medium",
-                f"Magic number {literal}.",
-                "Replace with a named constant that states the meaning and unit.",
-            ))
-
-    if python:
-        return findings
-    return findings
+    return [Finding(rel, index, "G25", "medium", f"Magic number {literal}.",
+                    "Replace with a named constant that states the meaning and unit.")
+            for index, line in enumerate(strip_strings_and_comments(text).splitlines(), start=1)
+            for literal in magic_literals(line)]
 
 
 # --------------------------------------------------------------------------------------
@@ -280,172 +261,171 @@ def python_complexity(node: ast.AST) -> int:
     return score
 
 
-def analyze_python(path: Path, text: str, cfg: argparse.Namespace) -> list[Finding]:
-    findings: list[Finding] = []
-    rel = str(path)
+def is_mutable_default(node: ast.AST) -> bool:
+    literal = isinstance(node, (ast.List, ast.Dict, ast.Set))
+    call = isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in {"list", "dict", "set"}
+    return literal or call
 
+
+def mutable_default_findings(rel: str, node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[Finding]:
+    defaults = node.args.defaults + [d for d in node.args.kw_defaults if d]
+    return [Finding(rel, default.lineno, "PY-MUT", "high",
+                    f"Mutable default argument in `{node.name}`.",
+                    "Use None as the default and build the container inside the body.")
+            for default in defaults if is_mutable_default(default)]
+
+
+def except_findings(rel: str, node: ast.ExceptHandler) -> list[Finding]:
+    findings: list[Finding] = []
+    if node.type is None:
+        findings.append(Finding(
+            rel, node.lineno, "G4", "high",
+            "Bare `except:` swallows KeyboardInterrupt and SystemExit.",
+            "Catch the specific exception type you can actually handle.",
+        ))
+    elif isinstance(node.type, ast.Name) and node.type.id in {"Exception", "BaseException"}:
+        findings.append(Finding(
+            rel, node.lineno, "G4", "medium",
+            f"Broad `except {node.type.id}` hides unrelated bugs.",
+            "Catch narrowly, or re-raise after handling what you recognize.",
+        ))
+    if len(node.body) == 1 and isinstance(node.body[0], ast.Pass):
+        findings.append(Finding(
+            rel, node.lineno, "G4", "high",
+            "Exception silently swallowed (`except ...: pass`).",
+            "Log with context or re-raise; never discard an error silently.",
+        ))
+    return findings
+
+
+def none_compare_findings(rel: str, node: ast.Compare) -> list[Finding]:
+    return [Finding(rel, node.lineno, "G26", "medium", "Comparing to None with == / !=.",
+                    "Use `is None` / `is not None`.")
+            for op, comparator in zip(node.ops, node.comparators, strict=True)
+            if isinstance(op, (ast.Eq, ast.NotEq)) and isinstance(comparator, ast.Constant)
+            and comparator.value is None]
+
+
+def class_attribute_findings(rel: str, node: ast.ClassDef) -> list[Finding]:
+    return [Finding(rel, item.lineno, "PY-CLS", "high",
+                    f"Mutable class attribute in `{node.name}` is shared by all instances.",
+                    "Initialize it in __init__, or use dataclasses.field(default_factory=...).")
+            for item in node.body
+            if isinstance(item, ast.Assign) and isinstance(item.value, (ast.List, ast.Dict, ast.Set))]
+
+
+def node_findings(rel: str, node: ast.AST, cfg: argparse.Namespace) -> list[Finding]:
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return _python_function_findings(rel, node, cfg) + mutable_default_findings(rel, node)
+    if isinstance(node, ast.ExceptHandler):
+        return except_findings(rel, node)
+    if isinstance(node, ast.Compare):
+        return none_compare_findings(rel, node)
+    if isinstance(node, ast.ClassDef):
+        return class_attribute_findings(rel, node)
+    return []
+
+
+def analyze_python(path: Path, text: str, cfg: argparse.Namespace) -> list[Finding]:
+    rel = str(path)
     try:
         tree = ast.parse(text, filename=str(path))
     except SyntaxError as err:
         return [Finding(rel, err.lineno or 1, "SYNTAX", "high",
                         f"Could not parse: {err.msg}", "")]
-
-    for node in ast.walk(tree):
-        # ---- function-level checks ----
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            findings += _python_function_findings(rel, node, cfg)
-
-        # ---- trap checks ----
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for default in node.args.defaults + [d for d in node.args.kw_defaults if d]:
-                if isinstance(default, (ast.List, ast.Dict, ast.Set)):
-                    findings.append(Finding(
-                        rel, default.lineno, "PY-MUT", "high",
-                        f"Mutable default argument in `{node.name}`.",
-                        "Use None as the default and build the container inside the body.",
-                    ))
-                if isinstance(default, ast.Call) and isinstance(default.func, ast.Name) \
-                        and default.func.id in {"list", "dict", "set"}:
-                    findings.append(Finding(
-                        rel, default.lineno, "PY-MUT", "high",
-                        f"Mutable default argument in `{node.name}`.",
-                        "Use None as the default and build the container inside the body.",
-                    ))
-
-        if isinstance(node, ast.ExceptHandler):
-            if node.type is None:
-                findings.append(Finding(
-                    rel, node.lineno, "G4", "high",
-                    "Bare `except:` swallows KeyboardInterrupt and SystemExit.",
-                    "Catch the specific exception type you can actually handle.",
-                ))
-            elif isinstance(node.type, ast.Name) and node.type.id in {"Exception", "BaseException"}:
-                findings.append(Finding(
-                    rel, node.lineno, "G4", "medium",
-                    f"Broad `except {node.type.id}` hides unrelated bugs.",
-                    "Catch narrowly, or re-raise after handling what you recognize.",
-                ))
-            if len(node.body) == 1 and isinstance(node.body[0], ast.Pass):
-                findings.append(Finding(
-                    rel, node.lineno, "G4", "high",
-                    "Exception silently swallowed (`except ...: pass`).",
-                    "Log with context or re-raise; never discard an error silently.",
-                ))
-
-        if isinstance(node, ast.Compare):
-            for op, comparator in zip(node.ops, node.comparators):
-                if isinstance(op, (ast.Eq, ast.NotEq)) and isinstance(comparator, ast.Constant) \
-                        and comparator.value is None:
-                    findings.append(Finding(
-                        rel, node.lineno, "G26", "medium",
-                        "Comparing to None with == / !=.",
-                        "Use `is None` / `is not None`.",
-                    ))
-
-        if isinstance(node, ast.ClassDef):
-            for item in node.body:
-                if isinstance(item, ast.Assign) and isinstance(item.value, (ast.List, ast.Dict, ast.Set)):
-                    findings.append(Finding(
-                        rel, item.lineno, "PY-CLS", "high",
-                        f"Mutable class attribute in `{node.name}` is shared by all instances.",
-                        "Initialize it in __init__, or use dataclasses.field(default_factory=...).",
-                    ))
-
-    return findings
+    return [finding for node in ast.walk(tree) for finding in node_findings(rel, node, cfg)]
 
 
-def _python_function_findings(
-    rel: str, node: ast.FunctionDef | ast.AsyncFunctionDef, cfg: argparse.Namespace
-) -> list[Finding]:
-    findings: list[Finding] = []
-
+def param_findings(rel: str, node: ast.FunctionDef | ast.AsyncFunctionDef, cfg: argparse.Namespace) -> list[Finding]:
     args = node.args
     positional = [a.arg for a in args.posonlyargs + args.args]
     if positional and positional[0] in {"self", "cls"}:
         positional = positional[1:]
     param_count = len(positional) + len(args.kwonlyargs)
+    if param_count <= cfg.max_params:
+        return []
+    return [Finding(
+        rel, node.lineno, "F1", "medium",
+        f"`{node.name}` takes {param_count} parameters (limit {cfg.max_params}).",
+        "Group the ones that travel together into a parameter object.",
+    )]
 
-    if param_count > cfg.max_params:
-        findings.append(Finding(
-            rel, node.lineno, "F1", "medium",
-            f"`{node.name}` takes {param_count} parameters (limit {cfg.max_params}).",
-            "Group the ones that travel together into a parameter object.",
-        ))
 
-    # F3: boolean flag parameters (positional ones are the readability problem).
-    for arg in args.posonlyargs + args.args:
-        if arg.arg in {"self", "cls"}:
-            continue
-        annotation = getattr(arg, "annotation", None)
-        is_bool_annotation = isinstance(annotation, ast.Name) and annotation.id == "bool"
-        looks_like_flag = re.match(r"^(is_|has_|should_|use_|enable_|do_|force_|verbose$|debug$)", arg.arg)
-        if is_bool_annotation or looks_like_flag:
-            findings.append(Finding(
-                rel, node.lineno, "F3", "medium",
-                f"`{node.name}` takes a positional boolean-looking parameter `{arg.arg}`.",
-                "Split into two functions, or make it keyword-only so call sites read clearly.",
-            ))
+def is_flag_param(arg: ast.arg) -> bool:
+    annotation = getattr(arg, "annotation", None)
+    return (isinstance(annotation, ast.Name) and annotation.id == "bool") or bool(FLAG_NAME_RE.match(arg.arg))
 
+
+def flag_param_findings(rel: str, node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[Finding]:
+    """F3: boolean flag parameters (positional ones are the readability problem)."""
+    return [Finding(rel, node.lineno, "F3", "medium",
+                    f"`{node.name}` takes a positional boolean-looking parameter `{arg.arg}`.",
+                    "Split into two functions, or make it keyword-only so call sites read clearly.")
+            for arg in node.args.posonlyargs + node.args.args
+            if arg.arg not in {"self", "cls"} and is_flag_param(arg)]
+
+
+def python_body_lines(node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
     end = getattr(node, "end_lineno", node.lineno) or node.lineno
     body_start = node.body[0].lineno if node.body else node.lineno
     # Multi-line string literals (docstrings, templates, SQL) are content, not logic.
     # Counting them would penalize exactly the code that should hold text.
-    literal_lines = 0
-    for child in ast.walk(node):
-        if isinstance(child, ast.Constant) and isinstance(child.value, str):
-            child_end = getattr(child, "end_lineno", child.lineno) or child.lineno
-            literal_lines += max(0, child_end - child.lineno)
-    body_lines = max(1, end - body_start + 1 - literal_lines)
-    if body_lines > cfg.max_function_lines:
-        findings.append(Finding(
-            rel, node.lineno, "G30", "medium",
-            f"`{node.name}` body is {body_lines} lines (limit {cfg.max_function_lines}).",
-            "Extract the blocks you would otherwise comment; each becomes a named function.",
-        ))
+    literal_lines = sum(max(0, (getattr(child, "end_lineno", child.lineno) or child.lineno) - child.lineno)
+                        for child in ast.walk(node)
+                        if isinstance(child, ast.Constant) and isinstance(child.value, str))
+    return max(1, end - body_start + 1 - literal_lines)
 
+
+def limit_findings(rel: str, node: ast.FunctionDef | ast.AsyncFunctionDef, cfg: argparse.Namespace) -> list[Finding]:
+    """Body length, nesting and complexity against the configured limits."""
+    body_lines = python_body_lines(node)
     depth = max((python_nesting_depth(stmt, 1) for stmt in node.body), default=0)
-    if depth > cfg.max_nesting:
-        findings.append(Finding(
-            rel, node.lineno, "G34", "medium",
-            f"`{node.name}` nests {depth} levels deep (limit {cfg.max_nesting}).",
-            "Invert preconditions into guard clauses, or extract the inner block.",
-        ))
-
     complexity = python_complexity(node)
-    if complexity > cfg.max_complexity:
-        findings.append(Finding(
-            rel, node.lineno, "G30", "medium",
-            f"`{node.name}` has cyclomatic complexity {complexity} (limit {cfg.max_complexity}).",
-            "Too many decisions in one place — decompose the conditional.",
-        ))
+    checks = [
+        (body_lines > cfg.max_function_lines, "G30",
+         f"`{node.name}` body is {body_lines} lines (limit {cfg.max_function_lines}).",
+         "Extract the blocks you would otherwise comment; each becomes a named function."),
+        (depth > cfg.max_nesting, "G34",
+         f"`{node.name}` nests {depth} levels deep (limit {cfg.max_nesting}).",
+         "Invert preconditions into guard clauses, or extract the inner block."),
+        (complexity > cfg.max_complexity, "G30",
+         f"`{node.name}` has cyclomatic complexity {complexity} (limit {cfg.max_complexity}).",
+         "Too many decisions in one place — decompose the conditional."),
+    ]
+    return [Finding(rel, node.lineno, code, "medium", message, hint) for hit, code, message, hint in checks if hit]
 
+
+def naming_findings(rel: str, node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[Finding]:
+    findings: list[Finding] = []
     # N1: uninformative names.
-    if len(node.name) <= 2 and not node.name.startswith("__"):
+    if len(node.name) <= SHORT_NAME_LENGTH and not node.name.startswith("__"):
         findings.append(Finding(
             rel, node.lineno, "N1", "medium",
             f"Function name `{node.name}` is too short to state intent.",
             "Name it as a verb phrase describing the one thing it does.",
         ))
-
     # Public functions should have a docstring stating the contract.
-    if not node.name.startswith("_") and ast.get_docstring(node) is None and body_lines > 5:
+    public = not node.name.startswith("_")
+    if public and ast.get_docstring(node) is None and python_body_lines(node) > TRIVIAL_BODY_LINES:
         findings.append(Finding(
             rel, node.lineno, "C1", "low",
             f"Public function `{node.name}` has no docstring.",
             "Document the contract: params, return, raises. Skip it for trivial functions.",
         ))
-
     # Uninformative local names.
-    for child in ast.walk(node):
-        if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store):
-            if child.id in {"tmp", "temp", "foo", "bar", "data", "info", "val", "obj", "res"}:
-                findings.append(Finding(
-                    rel, child.lineno, "N1", "low",
-                    f"Uninformative variable name `{child.id}`.",
-                    "Name it for what it holds at this point in the code.",
-                ))
+    return findings + [Finding(rel, child.lineno, "N1", "low",
+                               f"Uninformative variable name `{child.id}`.",
+                               "Name it for what it holds at this point in the code.")
+                       for child in ast.walk(node)
+                       if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store)
+                       and child.id in UNINFORMATIVE_NAMES]
 
-    return findings
+
+def _python_function_findings(
+    rel: str, node: ast.FunctionDef | ast.AsyncFunctionDef, cfg: argparse.Namespace
+) -> list[Finding]:
+    return (param_findings(rel, node, cfg) + flag_param_findings(rel, node)
+            + limit_findings(rel, node, cfg) + naming_findings(rel, node))
 
 
 # --------------------------------------------------------------------------------------
@@ -717,7 +697,7 @@ def analyze_file(path: Path, cfg: argparse.Namespace) -> list[Finding]:
 
     lines = text.splitlines()
     findings = check_common_text(path, lines, cfg)
-    findings += check_magic_numbers(path, text, cfg)
+    findings += check_magic_numbers(path, text)
 
     if path.suffix in PYTHON_SUFFIXES:
         findings += analyze_python(path, text, cfg)
