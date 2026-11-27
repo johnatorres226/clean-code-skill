@@ -27,7 +27,7 @@ import tomllib
 from pathlib import Path
 
 import bench
-from bench import ROOT, TEMPLATES, UsageLimit, fresh_dir, git_init, run_claude, sh, usage
+from bench import ROOT, TEMPLATES, Agent, UsageLimit, fresh_dir, git_init, run_claude, sh, usage
 
 CASES = ROOT / "tools" / "evals" / "review"
 KINDS = ["clean", "defects", "one_way", "adversarial"]
@@ -126,7 +126,7 @@ def review_prompt(case: dict) -> str:
 
 def review(work: Path, case: dict, model: str) -> dict:
     (work / "review.md").unlink(missing_ok=True)
-    events = run_claude(work, review_prompt(case), plugin=True, model=model, tools=REVIEW_TOOLS)
+    events = run_claude(work, review_prompt(case), Agent(plugin=True, model=model, tools=REVIEW_TOOLS))
     text = (work / "review.md").read_text(encoding="utf-8") if (work / "review.md").exists() else ""
     verdicts = VERDICT.findall(text)
     merge, tier = verdicts[-1] if verdicts else (None, None)
@@ -197,7 +197,7 @@ def adversarial_case(case: dict, model: str) -> None:
     work = build(case)
     rounds = [review_round(work, case, model)]
     while rounds[-1]["exploit"] and rounds[-1]["merge"] != "yes" and len(rounds) <= REVISE_ROUNDS:
-        run_claude(work, revise_prompt(case), plugin=False, model=model, tools=AUTHOR_TOOLS)
+        run_claude(work, revise_prompt(case), Agent(model=model, tools=AUTHOR_TOOLS))
         commit(work, "fix: address review")
         rounds.append(review_round(work, case, model))
     last = rounds[-1]
